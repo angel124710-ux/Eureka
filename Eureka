@@ -1,0 +1,170 @@
+-- // roniX APEX SYSTEM: SNEAK PEEK EDITION (AR 3D + HUD HYBRID)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local Stats = game:GetService("Stats")
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+local gui = script.Parent -- BillboardGui (O "Mundo" do Sneak Peek)
+
+-- HUD de Vidro (Apenas para utilidades quando destacadas)
+local screenHUD = Instance.new("ScreenGui")
+screenHUD.Name = "Apex_Detached_HUD"
+screenHUD.IgnoreGuiInset = true
+screenHUD.ResetOnSpawn = false
+screenHUD.Parent = player:WaitForChild("PlayerGui")
+
+-- Configurações de Auge (Fidelidade ao Sneak Peek)
+local targetOffset = Vector3.new(2.8, 1.4, -4.5) 
+local currentOffset = targetOffset
+local lerpSpeed = 0.12 -- Atraso fluido de HUD tecnológico
+local states = {
+    isOutside = false, -- O interruptor para destacar as utilidades
+    locked = false,
+    dragging = false,
+    fly = false,
+    noclip = false,
+    infJump = false
+}
+
+-- Referências de Personagem
+local char, hum, root, head
+local function updateRefs(newChar)
+    if not newChar then return end
+    char = newChar
+    hum = char:WaitForChild("Humanoid", 15)
+    root = char:WaitForChild("HumanoidRootPart", 15)
+    head = char:WaitForChild("Head", 15)
+    if not states.locked then gui.Adornee = head end
+end
+
+updateRefs(player.Character)
+player.CharacterAdded:Connect(updateRefs)
+
+-- [SISTEMA DE TELEMETRIA COMPLETO]
+-- Atualiza as informações "Sneak Peek" (FPS, Ping, Coordenadas, Mapa, Hora)
+local function updateInformation()
+    local info = gui:FindFirstChild("InfoPanel", true) or screenHUD:FindFirstChild("InfoPanel", true)
+    if info then
+        local p = root and root.Position or Vector3.new(0,0,0)
+        local fps = math.floor(Stats.WorkspaceResources.FPS:GetValue())
+        local ping = math.floor(player:GetNetworkPing() * 1000)
+        local time = game:GetService("Lighting").TimeOfDay
+        
+        -- Nomes dos objetos devem bater com seu design
+        if info:FindFirstChild("Coords") then info.Coords.Text = string.format("POS: [%.0f, %.0f, %.0f]", p.X, p.Y, p.Z) end
+        if info:FindFirstChild("Stats") then info.Stats.Text = string.format("FPS: %d | PING: %dms", fps, ping) end
+        if info:FindFirstChild("Zone") then info.Zone.Text = "SYSTEM: " .. game.Name:upper() end
+        if info:FindFirstChild("Clock") then info.Clock.Text = "TIME: " .. time end
+    end
+end
+
+-- [TRANSIÇÃO: MODO NORMAL VS MODO DESTACADO]
+-- Como detalhado: O normal é 3D/1ª pessoa. O true destaca as utilidades.
+local function toggleDetachedMode()
+    states.isOutside = not states.isOutside
+    local utils = gui:FindFirstChild("UtilsFrame", true) or screenHUD:FindFirstChild("UtilsFrame", true)
+    
+    if states.isOutside then
+        -- DESTACAR: Move utilidades para a HUD 2D (Sempre visível)
+        if utils then 
+            utils.Parent = screenHUD
+            utils.Position = UDim2.new(0.02, 0, 0.4, 0) -- Posição lateral mobile
+            utils.Size = UDim2.new(0, 180, 0, 300)
+        end
+    else
+        -- NORMAL: Reintegra ao Sneak Peek 3D (Apenas 1ª pessoa)
+        local container = gui:FindFirstChildOfClass("ScrollingFrame") or gui
+        if utils then 
+            utils.Parent = container 
+            utils.Position = UDim2.new(0, 0, 0, 0)
+            utils.Size = UDim2.new(1, 0, 1, 0)
+        end
+    end
+end
+
+-- [LOOP AR - O AUGE DO SNEAK PEEK]
+RunService.RenderStepped:Connect(function()
+    if not char or not head then return end
+
+    -- Regra absoluta: BillboardGui (Informações + Menu) só em 1ª Pessoa
+    local dist = (camera.CFrame.Position - head.Position).Magnitude
+    local isFirstPerson = dist < 1.2
+    
+    gui.Enabled = isFirstPerson
+    screenHUD.Enabled = states.isOutside -- HUD destacada vive fora da 1ª pessoa
+
+    if isFirstPerson then
+        if not states.locked then
+            gui.Adornee = head
+            -- O movimento que define o AR
+            currentOffset = currentOffset:Lerp(targetOffset, lerpSpeed)
+            gui.StudsOffset = currentOffset
+        else
+            gui.Adornee = nil -- Estaciona no mundo
+        end
+
+        -- Arraste 3D
+        if states.dragging then
+            local delta = UIS:GetMouseDelta()
+            targetOffset = targetOffset + Vector3.new(delta.X * 0.015, -delta.Y * 0.015, 0)
+        end
+    end
+    
+    updateInformation()
+
+    if states.noclip then
+        for _, v in ipairs(char:GetDescendants()) do
+            if v:IsA("BasePart") then v.CanCollide = false end
+        end
+    end
+end)
+
+-- [BYPASS RONYX & UTILIDADES]
+local function setup()
+    local function bind(name, func)
+        local b3 = gui:FindFirstChild(name, true)
+        local b2 = screenHUD:FindFirstChild(name, true)
+        if b3 then b3.Activated:Connect(func) end
+        if b2 then b2.Activated:Connect(func) end
+    end
+
+    bind("DetachBtn", toggleDetachedMode) -- O botão que destaca as utilidades
+    bind("LockBtn", function() states.locked = not states.locked end)
+    bind("SpeedBtn", function() if hum then hum.WalkSpeed = 60 end end)
+    bind("NoclipBtn", function() states.noclip = not states.noclip end)
+    bind("FlyBtn", function()
+        states.fly = not states.fly
+        if states.fly then
+            task.spawn(function()
+                local bv = Instance.new("BodyVelocity", root)
+                bv.MaxForce = Vector3.new(1,1,1)*math.huge
+                while states.fly and root do
+                    bv.Velocity = camera.CFrame.LookVector * 70
+                    task.wait()
+                end
+                bv:Destroy()
+            end)
+        end
+    end)
+end
+
+-- Metatable Bypass
+pcall(function()
+    local mt = getrawmetatable(game)
+    local old = mt.__index
+    setreadonly(mt, false)
+    mt.__index = newcclosure(function(t, k)
+        if not checkcaller() and t == hum and (k == "WalkSpeed" or k == "JumpPower") then return 16 end
+        return old(t, k)
+    end)
+    setreadonly(mt, true)
+end)
+
+-- Inputs
+gui.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.Touch then states.dragging = true end end)
+UIS.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.Touch then states.dragging = false end end)
+UIS.JumpRequest:Connect(function() if states.infJump and hum then hum:ChangeState(3) end end)
+
+setup()
