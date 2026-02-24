@@ -6,28 +6,30 @@ local Stats = game:GetService("Stats")
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
--- // BUSCA DA GUI (NÃO PARA ATÉ ACHAR)
+-- // 1. BUSCA AUTOMÁTICA (PEGA QUALQUER BILLBOARDGUI)
 local gui = nil
-while not gui do
-    for _, v in ipairs(player.PlayerGui:GetDescendants()) do
-        if v:IsA("BillboardGui") and (v:FindFirstChild("InfoPanel", true) or v:FindFirstChild("UtilsFrame", true)) then
-            gui = v
-            break
-        end
-    end
-    task.wait(1)
+for i = 1, 100 do
+    gui = player.PlayerGui:FindFirstChildOfClass("BillboardGui")
+    if gui then break end
+    task.wait(0.1)
 end
 
--- // HUD DE TELA (MODO OUTSIDE)
+if not gui then return end
+
+-- // 2. CONFIGURAÇÃO AUTOMÁTICA DA GUI
+gui.AlwaysOnTop = true
+gui.Enabled = true
+
+-- // 3. HUD DE TELA PARA UTILIDADES
 local screenHUD = player.PlayerGui:FindFirstChild("Apex_Screen") or Instance.new("ScreenGui")
 screenHUD.Name = "Apex_Screen"
 screenHUD.ResetOnSpawn = false
 screenHUD.Parent = player.PlayerGui
 
--- // ESTADOS
+-- // 4. ESTADOS E VARIAVEIS
 local targetOffset = Vector3.new(2.8, 1.4, -4.5)
 local currentOffset = targetOffset
-local states = {isOutside = false, locked = false, dragging = false, fly = false, noclip = false, infJump = false}
+local states = {isOutside = false, locked = false, fly = false, noclip = false, infJump = false}
 
 local char, hum, root, head
 local function updateRefs(c)
@@ -41,56 +43,64 @@ end
 updateRefs(player.Character)
 player.CharacterAdded:Connect(updateRefs)
 
--- // TELEMETRIA (IGUAL SNEAK PEEK)
-local function updateInfo()
-    local info = gui:FindFirstChild("InfoPanel", true) or screenHUD:FindFirstChild("InfoPanel", true)
-    if info and root then
-        local p = root.Position
-        local fps = math.floor(Stats.WorkspaceResources.FPS:GetValue())
-        if info:FindFirstChild("Coords", true) then info:FindFirstChild("Coords", true).Text = string.format("POS: %.0f, %.0f, %.0f", p.X, p.Y, p.Z) end
-        if info:FindFirstChild("Stats", true) then info:FindFirstChild("Stats", true).Text = fps .. " FPS | " .. math.floor(player:GetNetworkPing()*1000) .. "ms" end
-        if info:FindFirstChild("Zone", true) then info:FindFirstChild("Zone", true).Text = "MAP: " .. game.Name:upper() end
-    end
+-- // 5. INTELIGÊNCIA ARTIFICIAL DE INTERFACE (Acha os textos e botões sozinho)
+local function getElement(name)
+    return gui:FindFirstChild(name, true) or screenHUD:FindFirstChild(name, true)
 end
 
--- // TRANSIÇÃO DAS UTILIDADES (DETACH)
+local function updateTelemetry()
+    pcall(function()
+        local fps = math.floor(Stats.WorkspaceResources.FPS:GetValue())
+        local ping = math.floor(player:GetNetworkPing()*1000)
+        local pos = root.Position
+        
+        -- Procura qualquer TextLabel que pareça ser de Coords ou Stats
+        for _, v in ipairs(gui:GetDescendants()) do
+            if v:IsA("TextLabel") or v:IsA("TextBox") then
+                if v.Name:lower():find("coord") or v.Name:lower():find("pos") then
+                    v.Text = string.format("%.0f, %.0f, %.0f", pos.X, pos.Y, pos.Z)
+                elseif v.Name:lower():find("fps") or v.Name:lower():find("stat") or v.Name:lower():find("ms") then
+                    v.Text = fps .. " FPS | " .. ping .. "ms"
+                end
+            end
+        end
+    end)
+end
+
+-- // 6. TRANSIÇÃO AUTOMÁTICA (DETACH)
 local function toggleOutside()
     states.isOutside = not states.isOutside
-    local utils = gui:FindFirstChild("UtilsFrame", true) or screenHUD:FindFirstChild("UtilsFrame", true)
+    -- Pega o primeiro Frame grande que não seja o de info
+    local utils = gui:FindFirstChild("UtilsFrame", true) or gui:FindFirstChildOfClass("ScrollingFrame") or gui:FindFirstChildOfClass("Frame")
+    
     if utils then
         if states.isOutside then
             utils.Parent = screenHUD
             utils.Position = UDim2.new(0.05, 0, 0.4, 0)
-            utils.Size = UDim2.new(0, 180, 0, 300)
         else
             utils.Parent = gui:FindFirstChildOfClass("ScrollingFrame") or gui
             utils.Position = UDim2.new(0, 0, 0, 0)
-            utils.Size = UDim2.new(1, 0, 1, 0)
         end
     end
 end
 
--- // LOOP AR + 1ª PESSOA
+-- // 7. LOOP PRINCIPAL (AR + 1ª PESSOA)
 RunService.RenderStepped:Connect(function()
-    if not head or not root then return end
-    local isFirstPerson = (camera.CFrame.Position - head.Position).Magnitude < 1.5
+    if not (head and root and gui) then return end
+    
+    local dist = (camera.CFrame.Position - head.Position).Magnitude
+    local isFirstPerson = dist < 1.6
     
     gui.Enabled = isFirstPerson
     screenHUD.Enabled = states.isOutside
     
-    if isFirstPerson then
-        if not states.locked then
-            gui.Adornee = head
-            currentOffset = currentOffset:Lerp(targetOffset, 0.12)
-            gui.StudsOffset = currentOffset
-        end
-        if states.dragging then
-            local delta = UIS:GetMouseDelta()
-            targetOffset = targetOffset + Vector3.new(delta.X * 0.015, -delta.Y * 0.015, 0)
-        end
+    if isFirstPerson and not states.locked then
+        currentOffset = currentOffset:Lerp(targetOffset, 0.12)
+        gui.StudsOffset = currentOffset
     end
     
-    updateInfo()
+    updateTelemetry()
+    
     if states.noclip then
         for _, v in ipairs(char:GetDescendants()) do
             if v:IsA("BasePart") then v.CanCollide = false end
@@ -98,37 +108,38 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- // FUNÇÕES DE HACK (CORRIGIDAS)
-local function setup()
-    local function b(name, func)
-        local btn3d = gui:FindFirstChild(name, true)
-        local btn2d = screenHUD:FindFirstChild(name, true)
-        if btn3d then btn3d.Activated:Connect(func) end
-        if btn2d then btn2d.Activated:Connect(func) end
-    end
+-- // 8. CONEXÃO DE BOTÕES (BUSCA POR NOME OU TIPO)
+local function autoBind()
+    local buttons = {
+        ["Detach"] = toggleOutside,
+        ["Speed"] = function() if hum then hum.WalkSpeed = 65 end end,
+        ["Fly"] = function()
+            states.fly = not states.fly
+            if states.fly then
+                task.spawn(function()
+                    local bv = Instance.new("BodyVelocity", root)
+                    bv.MaxForce = Vector3.new(1,1,1)*math.huge
+                    while states.fly and root do
+                        bv.Velocity = camera.CFrame.LookVector * 75
+                        task.wait()
+                    end
+                    bv:Destroy()
+                end)
+            end
+        end,
+        ["Noclip"] = function() states.noclip = not states.noclip end,
+        ["Lock"] = function() states.locked = not states.locked end
+    }
 
-    b("DetachBtn", toggleOutside)
-    b("LockBtn", function() states.locked = not states.locked end)
-    b("SpeedBtn", function() if hum then hum.WalkSpeed = 65 end end)
-    b("NoclipBtn", function() states.noclip = not states.noclip end)
-    b("InfJumpBtn", function() states.infJump = not states.infJump end)
-    b("FlyBtn", function()
-        states.fly = not states.fly
-        if states.fly then
-            task.spawn(function()
-                local bv = Instance.new("BodyVelocity", root)
-                bv.MaxForce = Vector3.new(1,1,1) * math.huge
-                while states.fly and root do
-                    bv.Velocity = camera.CFrame.LookVector * 70
-                    task.wait()
-                end
-                bv:Destroy()
-            end)
+    for name, func in pairs(buttons) do
+        local btn = getElement(name .. "Btn") or getElement(name)
+        if btn and (btn:IsA("TextButton") or btn:IsA("ImageButton")) then
+            btn.Activated:Connect(func)
         end
-    end)
+    end
 end
 
--- // BYPASS METATABLE (VERSÃO MOBILE SEGURA)
+-- // 9. SEGURANÇA CONTRA DETECÇÃO (RONIX/EUREKA)
 pcall(function()
     local mt = getrawmetatable(game)
     setreadonly(mt, false)
@@ -140,9 +151,6 @@ pcall(function()
     setreadonly(mt, true)
 end)
 
--- // INPUTS
-gui.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.Touch then states.dragging = true end end)
-UIS.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.Touch then states.dragging = false end end)
+-- Iniciar
+autoBind()
 UIS.JumpRequest:Connect(function() if states.infJump and hum then hum:ChangeState(3) end end)
-
-setup()
