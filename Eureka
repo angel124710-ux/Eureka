@@ -1,162 +1,213 @@
-_G.ScriptEnabled = false
-_G.CameraEnabled = false
+-- ============================================
+-- UNIVERSAL LOCK CONTROLLER - PC & MOBILE
+-- Funciona com qualquer aimbot que use _G
+-- ============================================
+
+_G.CharLockEnabled = false
+_G.CamLockEnabled = false
 _G.Loaded = false
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 local pGui = player:WaitForChild("PlayerGui")
 
--- 1. Loader do aimbot original (mantém TUDO dele)
-local function loadAimbot()
-    if not _G.Loaded then
-        pcall(function()
-            loadstring(game:HttpGet("https://rawscripts.net/raw/The-Strongest-Battlegrounds-Tsb-Op-Silent-And-LockOn-44541"))()
-            _G.Loaded = true
-        end)
-    end
+-- Detectar plataforma
+local function isMobile()
+    return UserInputService.TouchEnabled and not UserInputService.MouseEnabled
 end
 
--- 2. Cleanup (NÃO mexe no aimbot)
-local function fullCleanup()
-    local clutterNames = {"KeybindsDisplayGui", "Tips", "TipGui", "HintGui", "TutorialGui", "MessageGui"}
-    for _, name in ipairs(clutterNames) do
-        local ui = pGui:FindFirstChild(name)
-        if ui then ui:Destroy() end
-    end
+-- Limpar UI antiga
+local function cleanup()
+    local old = pGui:FindFirstChild("LockController")
+    if old then old:Destroy() end
 end
 
--- 3. Toggle do aimbot original (ativa/desativa suas funções internas)
-local function toggleAimbot()
-    if _G.ScriptEnabled then
-        loadAimbot()
-        -- Ativa toggles do script original (ajuste nomes se necessário)
-        if _G.ToggleAim then _G.ToggleAim(true) end
-        if _G.CharacterLock then _G.CharacterLock(true) end
-    else
-        -- Desativa toggles do script original
-        if _G.ToggleAim then _G.ToggleAim(false) end
-        if _G.CharacterLock then _G.CharacterLock(false) end
-    end
-end
-
--- 4. Mobile GUI (controla o aimbot original)
-local function createMobileUI()
-    fullCleanup()
+-- Criar GUI (funciona igual em PC e Mobile)
+local function createGUI()
+    cleanup()
     
-    local sg = Instance.new("ScreenGui", pGui)
-    sg.Name = "ScriptControl"
+    -- ScreenGui
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "LockController"
+    sg.Parent = pGui
     sg.ResetOnSpawn = false
+    sg.IgnoreGuiInset = true
     
-    local mainFrame = Instance.new("Frame", sg)
-    mainFrame.Size = UDim2.new(0, 140, 0, 100)
-    mainFrame.Position = UDim2.new(0, 10, 0, 150)
-    mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    mainFrame.BorderSizePixel = 0
-    local mainCorner = Instance.new("UICorner", mainFrame)
-    mainCorner.CornerRadius = UDim.new(0, 12)
+    -- Frame principal
+    local frame = Instance.new("Frame")
+    frame.Parent = sg
+    frame.Size = UDim2.new(0, 180, 0, 110)
+    frame.Position = UDim2.new(0, 15, 0, 120)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+    frame.BackgroundTransparency = 0.1
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Draggable = true  -- Arrastável em mobile e PC
     
-    local title = Instance.new("TextLabel", mainFrame)
-    title.Size = UDim2.new(1, 0, 0, 25)
-    title.Position = UDim2.new(0, 0, 0, 0)
+    -- Borda
+    local stroke = Instance.new("UIStroke")
+    stroke.Parent = frame
+    stroke.Color = Color3.fromRGB(0, 255, 255)
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.3
+    
+    -- Cantos
+    local corner = Instance.new("UICorner")
+    corner.Parent = frame
+    corner.CornerRadius = UDim.new(0, 8)
+    
+    -- Título
+    local title = Instance.new("TextLabel")
+    title.Parent = frame
+    title.Size = UDim2.new(1, -10, 0, 25)
+    title.Position = UDim2.new(0, 5, 0, 5)
     title.BackgroundTransparency = 1
-    title.Text = "AIMBOT GUI"
-    title.TextColor3 = Color3.new(1,1,1)
-    title.Font = Enum.Font.SourceSansBold
-    title.TextSize = 16
+    title.Text = "🔰 LOCK CONTROLLER"
+    title.TextColor3 = Color3.fromRGB(0, 255, 255)
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 14
+    title.TextXAlignment = Enum.TextXAlignment.Left
     
-    -- Character/Aimbot Toggle (ativa o script todo)
-    local aimBtn = Instance.new("TextButton", mainFrame)
-    aimBtn.Size = UDim2.new(0.48, -3, 0, 35)
-    aimBtn.Position = UDim2.new(0, 3, 0, 30)
-    aimBtn.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
-    aimBtn.Text = "AIMBOT: OFF"
-    aimBtn.TextColor3 = Color3.new(1,1,1)
-    aimBtn.Font = Enum.Font.SourceSans
-    aimBtn.TextSize = 14
-    local aimCorner = Instance.new("UICorner", aimBtn)
+    -- Character Lock Button
+    local charBtn = Instance.new("TextButton")
+    charBtn.Parent = frame
+    charBtn.Size = UDim2.new(1, -20, 0, 32)
+    charBtn.Position = UDim2.new(0, 10, 0, 35)
+    charBtn.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
+    charBtn.Text = "👤 CHARACTER LOCK: OFF"
+    charBtn.TextColor3 = Color3.new(1, 1, 1)
+    charBtn.Font = Enum.Font.GothamBold
+    charBtn.TextSize = 12
+    charBtn.AutoButtonColor = false
     
-    -- Camera Toggle (se o script tiver)
-    local camBtn = Instance.new("TextButton", mainFrame)
-    camBtn.Size = UDim2.new(0.48, -3, 0, 35)
-    camBtn.Position = UDim2.new(0.52, 3, 0, 30)
-    camBtn.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
-    camBtn.Text = "CAM: OFF"
-    camBtn.TextColor3 = Color3.new(1,1,1)
-    camBtn.Font = Enum.Font.SourceSans
-    camBtn.TextSize = 14
-    local camCorner = Instance.new("UICorner", camBtn)
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.Parent = charBtn
+    btnCorner.CornerRadius = UDim.new(0, 5)
     
-    aimBtn.MouseButton1Click:Connect(function()
-        _G.ScriptEnabled = not _G.ScriptEnabled
-        aimBtn.Text = _G.ScriptEnabled and "AIMBOT: ON" or "AIMBOT: OFF"
-        aimBtn.BackgroundColor3 = _G.ScriptEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
-        toggleAimbot()
+    -- Camera Lock Button
+    local camBtn = Instance.new("TextButton")
+    camBtn.Parent = frame
+    camBtn.Size = UDim2.new(1, -20, 0, 32)
+    camBtn.Position = UDim2.new(0, 10, 0, 72)
+    camBtn.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
+    camBtn.Text = "📷 CAMERA LOCK: OFF"
+    camBtn.TextColor3 = Color3.new(1, 1, 1)
+    camBtn.Font = Enum.Font.GothamBold
+    camBtn.TextSize = 12
+    camBtn.AutoButtonColor = false
+    
+    local camCorner = Instance.new("UICorner")
+    camCorner.Parent = camBtn
+    camCorner.CornerRadius = UDim.new(0, 5)
+    
+    -- Função para atualizar cores dos botões
+    local function updateButtons()
+        charBtn.BackgroundColor3 = _G.CharLockEnabled and 
+            Color3.fromRGB(0, 150, 0) or Color3.fromRGB(180, 0, 0)
+        charBtn.Text = _G.CharLockEnabled and 
+            "👤 CHARACTER LOCK: ON" or "👤 CHARACTER LOCK: OFF"
+            
+        camBtn.BackgroundColor3 = _G.CamLockEnabled and 
+            Color3.fromRGB(0, 150, 0) or Color3.fromRGB(180, 0, 0)
+        camBtn.Text = _G.CamLockEnabled and 
+            "📷 CAMERA LOCK: ON" or "📷 CAMERA LOCK: OFF"
+    end
+    
+    -- Eventos dos botões
+    charBtn.MouseButton1Click:Connect(function()
+        _G.CharLockEnabled = not _G.CharLockEnabled
+        
+        -- Tenta chamar a função do script original (se existir)
+        pcall(function()
+            if _G.CharacterLock then
+                _G.CharacterLock(_G.CharLockEnabled)
+            elseif type(_G.ToggleCharacterLock) == "function" then
+                _G.ToggleCharacterLock(_G.CharLockEnabled)
+            end
+        end)
+        
+        updateButtons()
+        
+        -- Feedback visual
+        charBtn.TextSize = 13
+        task.wait(0.1)
+        charBtn.TextSize = 12
     end)
     
     camBtn.MouseButton1Click:Connect(function()
-        _G.CameraEnabled = not _G.CameraEnabled
-        camBtn.Text = _G.CameraEnabled and "CAM: ON" or "CAM: OFF"
-        camBtn.BackgroundColor3 = _G.CameraEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
-        -- Toggle camera do script original
-        if _G.CameraLock then _G.CameraLock(_G.CameraEnabled) end
-    end)
-end
-
--- 5. PC Keybinds (P = Aimbot todo, L = Camera)
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    
-    if input.KeyCode == Enum.KeyCode.P then
-        _G.ScriptEnabled = not _G.ScriptEnabled
-        toggleAimbot()
-        print("Aimbot:", _G.ScriptEnabled and "ON" or "OFF")
-    elseif input.KeyCode == Enum.KeyCode.L then
-        _G.CameraEnabled = not _G.CameraEnabled
-        if _G.CameraLock then _G.CameraLock(_G.CameraEnabled) end
-        print("Camera:", _G.CameraEnabled and "ON" or "OFF")
-    end
-end)
-
--- 6. Camera NoC (melhora o aimbot)
-local closestEnemyCam = nil
-RunService.RenderStepped:Connect(function()
-    if _G.CameraEnabled and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-        local root = player.Character.HumanoidRootPart
-        local newTarget = nil
-        local shortestDist = math.huge
+        _G.CamLockEnabled = not _G.CamLockEnabled
         
-        for _, otherPlayer in ipairs(Players:GetPlayers()) do
-            if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                local dist = (root.Position - otherPlayer.Character.HumanoidRootPart.Position).Magnitude
-                if dist < shortestDist then
-                    shortestDist = dist
-                    newTarget = otherPlayer.Character.HumanoidRootPart
-                end
+        -- Tenta chamar a função do script original (se existir)
+        pcall(function()
+            if _G.CameraLock then
+                _G.CameraLock(_G.CamLockEnabled)
+            elseif type(_G.ToggleCameraLock) == "function" then
+                _G.ToggleCameraLock(_G.CamLockEnabled)
+            end
+        end)
+        
+        updateButtons()
+        
+        -- Feedback visual
+        camBtn.TextSize = 13
+        task.wait(0.1)
+        camBtn.TextSize = 12
+    end)
+    
+    -- Atualizar estado inicial
+    updateButtons()
+    
+    -- Monitorar mudanças nas variáveis globais
+    spawn(function()
+        while true do
+            task.wait(0.5)
+            -- Se alguém mudar as variáveis diretamente, atualiza a UI
+            local currentCharState = _G.CharLockEnabled
+            local currentCamState = _G.CamLockEnabled
+            
+            if (currentCharState and charBtn.Text == "👤 CHARACTER LOCK: OFF") or
+               (not currentCharState and charBtn.Text == "👤 CHARACTER LOCK: ON") then
+                updateButtons()
+            end
+            
+            if (currentCamState and camBtn.Text == "📷 CAMERA LOCK: OFF") or
+               (not currentCamState and camBtn.Text == "📷 CAMERA LOCK: ON") then
+                updateButtons()
             end
         end
+    end)
+    
+    -- Atalhos de teclado (funcionam apenas no PC)
+    if not isMobile() then
+        UserInputService.InputBegan:Connect(function(input, gpe)
+            if gpe then return end
+            
+            if input.KeyCode == Enum.KeyCode.P then
+                charBtn.MouseButton1Click:Fire()
+            elseif input.KeyCode == Enum.KeyCode.L then
+                camBtn.MouseButton1Click:Fire()
+            end
+        end)
         
-        if newTarget and newTarget ~= closestEnemyCam then
-            closestEnemyCam = newTarget
-        end
-        
-        if closestEnemyCam then
-            workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, closestEnemyCam.Position)
-            player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
-            UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-        end
-    else
-        player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Zoom
-        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        -- Mostrar atalhos no título (só no PC)
+        title.Text = "🔰 LOCK CTRL [P] [L]"
     end
+    
+    return sg
+end
+
+-- Inicializar
+pcall(function()
+    -- Criar GUI
+    createGUI()
+    
+    -- Recriar quando o personagem renascer
+    player.CharacterAdded:Connect(function()
+        task.wait(1.5)
+        createGUI()
+    end)
 end)
 
--- Initialize
-fullCleanup()
-createMobileUI()
-player.CharacterAdded:Connect(function()
-    task.wait(1)
-    fullCleanup()
-    createMobileUI()
-end)
+print("✅ Lock Controller carregado! Pressione P/L no PC ou use os botões no Mobile")
