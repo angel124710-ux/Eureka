@@ -1,116 +1,213 @@
-_G.ScriptEnabled = true
+-- ============================================
+-- UNIVERSAL LOCK CONTROLLER - PC & MOBILE
+-- Funciona com qualquer aimbot que use _G
+-- ============================================
+
+_G.CharLockEnabled = false
+_G.CamLockEnabled = false
+_G.Loaded = false
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 local pGui = player:WaitForChild("PlayerGui")
 
--- 1. Load External Logic
-pcall(function()
-    loadstring(game:HttpGet("https://rawscripts.net/raw/The-Strongest-Battlegrounds-Tsb-Op-Silent-And-LockOn-44541"))()
-end)
+-- Detectar plataforma
+local function isMobile()
+    return UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+end
 
--- 2. Clean UI, Remove Tips, and Fix Mobile Buttons
-local function fullCleanup()
-    -- List of common UI names for tips/keybinds/clutter
-    local clutterNames = {"KeybindsDisplayGui", "Tips", "TipGui", "HintGui", "TutorialGui", "MessageGui"}
+-- Limpar UI antiga
+local function cleanup()
+    local old = pGui:FindFirstChild("LockController")
+    if old then old:Destroy() end
+end
+
+-- Criar GUI (funciona igual em PC e Mobile)
+local function createGUI()
+    cleanup()
     
-    for _, name in ipairs(clutterNames) do
-        local ui = pGui:FindFirstChild(name)
-        if ui then ui:Destroy() end
-    end
-
-    -- Clean up the Mobile Buttons (ContextActionGui)
-    local contextGui = pGui:FindFirstChild("ContextActionGui")
-    if contextGui then
-        local buttonFrame = contextGui:FindFirstChild("ContextButtonFrame")
-        if buttonFrame then
-            local buttons = {}
-            for _, child in ipairs(buttonFrame:GetChildren()) do
-                if child:IsA("GuiObject") then table.insert(buttons, child) end
-            end
-            if #buttons > 0 then
-                table.sort(buttons, function(a, b) return a.Name < b.Name end)
-                if buttons[1] then
-                    buttons[1].Position = UDim2.new(1, -150, 1, -150)
-                    buttons[1].Size = UDim2.new(0, 60, 0, 60)
-                end
-                for i = 2, #buttons do if buttons[i] then buttons[i]:Destroy() end end
-            end
-        end
-    end
-end
-
--- 3. Toggle Logic
-local function updateState()
-    if not _G.ScriptEnabled then
-        -- Force normal camera and mouse
-        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-        player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Zoom
-        player.CameraMinZoomDistance = 0.5
-    else
-        -- Active Script Settings
-        player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
-        player.CameraMinZoomDistance = 0.5
-    end
-end
-
--- 4. Mobile Toggle UI
-local function createMobileUI()
-    if pGui:FindFirstChild("ScriptControl") then pGui.ScriptControl:Destroy() end
-    local sg = Instance.new("ScreenGui", pGui)
-    sg.Name = "ScriptControl"
+    -- ScreenGui
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "LockController"
+    sg.Parent = pGui
     sg.ResetOnSpawn = false
-
-    local btn = Instance.new("TextButton", sg)
-    btn.Size = UDim2.new(0, 110, 0, 40)
-    btn.Position = UDim2.new(0, 10, 0, 200)
-    btn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
-    btn.Text = "SCRIPT: ON"
-    btn.TextColor3 = Color3.new(1, 1, 1)
-    btn.Font = Enum.Font.SourceSansBold
-    btn.TextSize = 14
-    local corner = Instance.new("UICorner", btn)
+    sg.IgnoreGuiInset = true
     
-    btn.MouseButton1Click:Connect(function()
-        _G.ScriptEnabled = not _G.ScriptEnabled
-        btn.Text = _G.ScriptEnabled and "SCRIPT: ON" or "SCRIPT: OFF"
-        btn.BackgroundColor3 = _G.ScriptEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
-        updateState()
+    -- Frame principal
+    local frame = Instance.new("Frame")
+    frame.Parent = sg
+    frame.Size = UDim2.new(0, 180, 0, 110)
+    frame.Position = UDim2.new(0, 15, 0, 120)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+    frame.BackgroundTransparency = 0.1
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Draggable = true  -- Arrastável em mobile e PC
+    
+    -- Borda
+    local stroke = Instance.new("UIStroke")
+    stroke.Parent = frame
+    stroke.Color = Color3.fromRGB(0, 255, 255)
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.3
+    
+    -- Cantos
+    local corner = Instance.new("UICorner")
+    corner.Parent = frame
+    corner.CornerRadius = UDim.new(0, 8)
+    
+    -- Título
+    local title = Instance.new("TextLabel")
+    title.Parent = frame
+    title.Size = UDim2.new(1, -10, 0, 25)
+    title.Position = UDim2.new(0, 5, 0, 5)
+    title.BackgroundTransparency = 1
+    title.Text = "🔰 LOCK CONTROLLER"
+    title.TextColor3 = Color3.fromRGB(0, 255, 255)
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 14
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    
+    -- Character Lock Button
+    local charBtn = Instance.new("TextButton")
+    charBtn.Parent = frame
+    charBtn.Size = UDim2.new(1, -20, 0, 32)
+    charBtn.Position = UDim2.new(0, 10, 0, 35)
+    charBtn.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
+    charBtn.Text = "👤 CHARACTER LOCK: OFF"
+    charBtn.TextColor3 = Color3.new(1, 1, 1)
+    charBtn.Font = Enum.Font.GothamBold
+    charBtn.TextSize = 12
+    charBtn.AutoButtonColor = false
+    
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.Parent = charBtn
+    btnCorner.CornerRadius = UDim.new(0, 5)
+    
+    -- Camera Lock Button
+    local camBtn = Instance.new("TextButton")
+    camBtn.Parent = frame
+    camBtn.Size = UDim2.new(1, -20, 0, 32)
+    camBtn.Position = UDim2.new(0, 10, 0, 72)
+    camBtn.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
+    camBtn.Text = "📷 CAMERA LOCK: OFF"
+    camBtn.TextColor3 = Color3.new(1, 1, 1)
+    camBtn.Font = Enum.Font.GothamBold
+    camBtn.TextSize = 12
+    camBtn.AutoButtonColor = false
+    
+    local camCorner = Instance.new("UICorner")
+    camCorner.Parent = camBtn
+    camCorner.CornerRadius = UDim.new(0, 5)
+    
+    -- Função para atualizar cores dos botões
+    local function updateButtons()
+        charBtn.BackgroundColor3 = _G.CharLockEnabled and 
+            Color3.fromRGB(0, 150, 0) or Color3.fromRGB(180, 0, 0)
+        charBtn.Text = _G.CharLockEnabled and 
+            "👤 CHARACTER LOCK: ON" or "👤 CHARACTER LOCK: OFF"
+            
+        camBtn.BackgroundColor3 = _G.CamLockEnabled and 
+            Color3.fromRGB(0, 150, 0) or Color3.fromRGB(180, 0, 0)
+        camBtn.Text = _G.CamLockEnabled and 
+            "📷 CAMERA LOCK: ON" or "📷 CAMERA LOCK: OFF"
+    end
+    
+    -- Eventos dos botões
+    charBtn.MouseButton1Click:Connect(function()
+        _G.CharLockEnabled = not _G.CharLockEnabled
+        
+        -- Tenta chamar a função do script original (se existir)
+        pcall(function()
+            if _G.CharacterLock then
+                _G.CharacterLock(_G.CharLockEnabled)
+            elseif type(_G.ToggleCharacterLock) == "function" then
+                _G.ToggleCharacterLock(_G.CharLockEnabled)
+            end
+        end)
+        
+        updateButtons()
+        
+        -- Feedback visual
+        charBtn.TextSize = 13
+        task.wait(0.1)
+        charBtn.TextSize = 12
     end)
+    
+    camBtn.MouseButton1Click:Connect(function()
+        _G.CamLockEnabled = not _G.CamLockEnabled
+        
+        -- Tenta chamar a função do script original (se existir)
+        pcall(function()
+            if _G.CameraLock then
+                _G.CameraLock(_G.CamLockEnabled)
+            elseif type(_G.ToggleCameraLock) == "function" then
+                _G.ToggleCameraLock(_G.CamLockEnabled)
+            end
+        end)
+        
+        updateButtons()
+        
+        -- Feedback visual
+        camBtn.TextSize = 13
+        task.wait(0.1)
+        camBtn.TextSize = 12
+    end)
+    
+    -- Atualizar estado inicial
+    updateButtons()
+    
+    -- Monitorar mudanças nas variáveis globais
+    spawn(function()
+        while true do
+            task.wait(0.5)
+            -- Se alguém mudar as variáveis diretamente, atualiza a UI
+            local currentCharState = _G.CharLockEnabled
+            local currentCamState = _G.CamLockEnabled
+            
+            if (currentCharState and charBtn.Text == "👤 CHARACTER LOCK: OFF") or
+               (not currentCharState and charBtn.Text == "👤 CHARACTER LOCK: ON") then
+                updateButtons()
+            end
+            
+            if (currentCamState and camBtn.Text == "📷 CAMERA LOCK: OFF") or
+               (not currentCamState and camBtn.Text == "📷 CAMERA LOCK: ON") then
+                updateButtons()
+            end
+        end
+    end)
+    
+    -- Atalhos de teclado (funcionam apenas no PC)
+    if not isMobile() then
+        UserInputService.InputBegan:Connect(function(input, gpe)
+            if gpe then return end
+            
+            if input.KeyCode == Enum.KeyCode.P then
+                charBtn.MouseButton1Click:Fire()
+            elseif input.KeyCode == Enum.KeyCode.L then
+                camBtn.MouseButton1Click:Fire()
+            end
+        end)
+        
+        -- Mostrar atalhos no título (só no PC)
+        title.Text = "🔰 LOCK CTRL [P] [L]"
+    end
+    
+    return sg
 end
 
--- 5. Anti-Shiftlock Loop
-RunService.RenderStepped:Connect(function()
-    if not _G.ScriptEnabled then
-        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-    end
+-- Inicializar
+pcall(function()
+    -- Criar GUI
+    createGUI()
+    
+    -- Recriar quando o personagem renascer
+    player.CharacterAdded:Connect(function()
+        task.wait(1.5)
+        createGUI()
+    end)
 end)
 
--- Initialize
-fullCleanup()
-updateState()
-createMobileUI()
-
-player.CharacterAdded:Connect(function()
-    task.wait(1)
-    fullCleanup()
-    updateState()
-end)
-
--- 6. PC Keybind (P)
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.P then
-        _G.ScriptEnabled = not _G.ScriptEnabled
-        updateState()
-        
-        -- Sync the Mobile Button text if it exists
-        local btn = pGui.ScriptControl:FindFirstChildOfClass("TextButton")
-        if btn then
-            btn.Text = _G.ScriptEnabled and "SCRIPT: ON" or "SCRIPT: OFF"
-            btn.BackgroundColor3 = _G.ScriptEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
-        end
-    end
-end)
+print("✅ Lock Controller carregado! Pressione P/L no PC ou use os botões no Mobile")
