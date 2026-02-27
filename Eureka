@@ -1,41 +1,118 @@
 loadstring(game:HttpGet("https://rawscripts.net/raw/The-Strongest-Battlegrounds-Tsb-Op-Silent-And-LockOn-44541"))()
 
-game:GetService("Players").LocalPlayer.PlayerGui.KeybindsDisplayGui:Destroy()
+_G.ScriptEnabled = true
 
-local buttons = game:GetService("Players").LocalPlayer.PlayerGui.ContextActionGui.ContextButtonFrame:GetChildren()
-
-table.sort(buttons, function(a, b)
-    return a.Name < b.Name
-end)
-
-buttons[1].Position = UDim2.new(1, -180, 0.5, -190)
-buttons[1].Size = UDim2.new(0, 70, 0, 70)
-buttons[2]:Destroy()
-buttons[3]:Destroy()
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-
+local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
+local pGui = player:WaitForChild("PlayerGui")
 
--- Esta função remove a detecção de obstrução da câmera
-local function disableCameraCollision()
-    if player.CameraMinZoomDistance ~= 0.5 then
-        player.CameraMinZoomDistance = 0.5
-    end
+-- 1. Load External Logic
+pcall(function()
+    loadstring(game:HttpGet("https://rawscripts.net/raw/The-Strongest-Battlegrounds-Tsb-Op-Silent-And-LockOn-44541"))()
+end)
+
+-- 2. Clean UI, Remove Tips, and Fix Mobile Buttons
+local function fullCleanup()
+    -- List of common UI names for tips/keybinds/clutter
+    local clutterNames = {"KeybindsDisplayGui", "Tips", "TipGui", "HintGui", "TutorialGui", "MessageGui"}
     
-    -- O DevTouchCameraRotation e o Invisicam são modos que lidam com colisão.
-    -- Para atravessar tudo, geralmente forçamos o modo de visualização.
-    player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+    for _, name in ipairs(clutterNames) do
+        local ui = pGui:FindFirstChild(name)
+        if ui then ui:Destroy() end
+    end
+
+    -- Clean up the Mobile Buttons (ContextActionGui)
+    local contextGui = pGui:FindFirstChild("ContextActionGui")
+    if contextGui then
+        local buttonFrame = contextGui:FindFirstChild("ContextButtonFrame")
+        if buttonFrame then
+            local buttons = {}
+            for _, child in ipairs(buttonFrame:GetChildren()) do
+                if child:IsA("GuiObject") then table.insert(buttons, child) end
+            end
+            if #buttons > 0 then
+                table.sort(buttons, function(a, b) return a.Name < b.Name end)
+                if buttons[1] then
+                    buttons[1].Position = UDim2.new(1, -150, 1, -150)
+                    buttons[1].Size = UDim2.new(0, 60, 0, 60)
+                end
+                for i = 2, #buttons do if buttons[i] then buttons[i]:Destroy() end end
+            end
+        end
+    end
 end
 
--- Executa a configuração
-disableCameraCollision()
+-- 3. Toggle Logic
+local function updateState()
+    if not _G.ScriptEnabled then
+        -- Force normal camera and mouse
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Zoom
+        player.CameraMinZoomDistance = 0.5
+    else
+        -- Active Script Settings
+        player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+        player.CameraMinZoomDistance = 0.5
+    end
+end
 
--- Opcional: Se quiser que a câmera NUNCA dê zoom automático ao bater em algo
--- Você pode criar um sistema de câmera customizado simples:
-camera.ChildAdded:Connect(function(child)
-    if child:IsA("ZoomController") or child.Name == "CameraWheel" then
-        child:Destroy()
+-- 4. Mobile Toggle UI
+local function createMobileUI()
+    if pGui:FindFirstChild("ScriptControl") then pGui.ScriptControl:Destroy() end
+    local sg = Instance.new("ScreenGui", pGui)
+    sg.Name = "ScriptControl"
+    sg.ResetOnSpawn = false
+
+    local btn = Instance.new("TextButton", sg)
+    btn.Size = UDim2.new(0, 110, 0, 40)
+    btn.Position = UDim2.new(0, 10, 0, 200)
+    btn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+    btn.Text = "SCRIPT: ON"
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 14
+    local corner = Instance.new("UICorner", btn)
+    
+    btn.MouseButton1Click:Connect(function()
+        _G.ScriptEnabled = not _G.ScriptEnabled
+        btn.Text = _G.ScriptEnabled and "SCRIPT: ON" or "SCRIPT: OFF"
+        btn.BackgroundColor3 = _G.ScriptEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
+        updateState()
+    end)
+end
+
+-- 5. Anti-Shiftlock Loop
+RunService.RenderStepped:Connect(function()
+    if not _G.ScriptEnabled then
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+    end
+end)
+
+-- Initialize
+fullCleanup()
+updateState()
+createMobileUI()
+
+player.CharacterAdded:Connect(function()
+    task.wait(1)
+    fullCleanup()
+    updateState()
+end)
+
+-- 6. PC Keybind (P)
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.P then
+        _G.ScriptEnabled = not _G.ScriptEnabled
+        updateState()
+        
+        -- Sync the Mobile Button text if it exists
+        local btn = pGui.ScriptControl:FindFirstChildOfClass("TextButton")
+        if btn then
+            btn.Text = _G.ScriptEnabled and "SCRIPT: ON" or "SCRIPT: OFF"
+            btn.BackgroundColor3 = _G.ScriptEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
+        end
     end
 end)
