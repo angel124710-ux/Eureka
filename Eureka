@@ -1,41 +1,273 @@
+-- Carregar script original
 loadstring(game:HttpGet("https://rawscripts.net/raw/The-Strongest-Battlegrounds-Tsb-Op-Silent-And-LockOn-44541"))()
 
-game:GetService("Players").LocalPlayer.PlayerGui.KeybindsDisplayGui:Destroy()
+-- Pequena pausa para garantir que o script carregou
+task.wait(1)
 
-local buttons = game:GetService("Players").LocalPlayer.PlayerGui.ContextActionGui.ContextButtonFrame:GetChildren()
-
-table.sort(buttons, function(a, b)
-    return a.Name < b.Name
+-- Remover GUI de teclas (só atrapalha)
+pcall(function()
+    game:GetService("Players").LocalPlayer.PlayerGui.KeybindsDisplayGui:Destroy()
 end)
 
-buttons[1].Position = UDim2.new(1, -180, 0.5, -190)
-buttons[1].Size = UDim2.new(0, 70, 0, 70)
-buttons[2]:Destroy()
-buttons[3]:Destroy()
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
+local pGui = player:WaitForChild("PlayerGui")
 
--- Esta função remove a detecção de obstrução da câmera
-local function disableCameraCollision()
-    if player.CameraMinZoomDistance ~= 0.5 then
-        player.CameraMinZoomDistance = 0.5
+-- ==============================================
+-- VARIÁVEIS DE ESTADO
+-- ==============================================
+local currentMode = "L" -- "L" = Character Lock, "P" = Camera Lock
+local isDraggable = true -- Começa arrastável
+_G.CharLockEnabled = _G.CharLockEnabled or false
+_G.CamLockEnabled = _G.CamLockEnabled or false
+
+-- ==============================================
+-- CONFIGURAR BOTÃO ÚNICO COM SWITCH
+-- ==============================================
+local function setupMobileUI()
+    local contextFrame = pGui:FindFirstChild("ContextActionGui") and 
+                         pGui.ContextActionGui:FindFirstChild("ContextButtonFrame")
+    
+    if not contextFrame then 
+        warn("ContextButtonFrame não encontrado!")
+        return 
     end
     
-    -- O DevTouchCameraRotation e o Invisicam são modos que lidam com colisão.
-    -- Para atravessar tudo, geralmente forçamos o modo de visualização.
-    player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+    local buttons = contextFrame:GetChildren()
+    table.sort(buttons, function(a, b) return a.Name < b.Name end)
+    
+    -- Guardar referência do botão que vamos usar (o primeiro)
+    local mainButton = buttons[1]
+    if not mainButton then 
+        warn("Botão principal não encontrado!")
+        return 
+    end
+    
+    -- Destruir os outros botões (2 e 3)
+    if buttons[2] then buttons[2]:Destroy() end
+    if buttons[3] then buttons[3]:Destroy() end
+    
+    -- Configurar o botão principal
+    mainButton.Position = UDim2.new(1, -200, 0.5, -100)
+    mainButton.Size = UDim2.new(0, 90, 0, 90)
+    mainButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    mainButton.TextColor3 = Color3.new(1, 1, 1)
+    mainButton.Font = Enum.Font.GothamBold
+    mainButton.TextSize = 16
+    mainButton.Active = true
+    mainButton.Draggable = true -- Botão também é arrastável
+    
+    -- ==============================================
+    -- INDICADOR DE MODO (L/P) COM TRAVA
+    -- ==============================================
+    local modeIndicator = Instance.new("Frame")
+    modeIndicator.Parent = contextFrame.Parent
+    modeIndicator.Size = UDim2.new(0, 55, 0, 65) -- Um pouco maior para acomodar o cadeado
+    modeIndicator.Position = UDim2.new(1, -220, 0.5, -180)
+    modeIndicator.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+    modeIndicator.BackgroundTransparency = 0.1
+    modeIndicator.Active = true
+    modeIndicator.Draggable = true -- Inicialmente arrastável
+    
+    local indicatorCorner = Instance.new("UICorner")
+    indicatorCorner.Parent = modeIndicator
+    indicatorCorner.CornerRadius = UDim.new(0, 10) -- Levemente arredondado
+    
+    -- Área do texto L/P
+    local textFrame = Instance.new("Frame")
+    textFrame.Parent = modeIndicator
+    textFrame.Size = UDim2.new(1, 0, 0, 35)
+    textFrame.Position = UDim2.new(0, 0, 0, 0)
+    textFrame.BackgroundTransparency = 1
+    
+    local indicatorText = Instance.new("TextLabel")
+    indicatorText.Parent = textFrame
+    indicatorText.Size = UDim2.new(1, 0, 1, 0)
+    indicatorText.BackgroundTransparency = 1
+    indicatorText.Text = currentMode
+    indicatorText.TextColor3 = Color3.fromRGB(0, 255, 255)
+    indicatorText.Font = Enum.Font.GothamBold
+    indicatorText.TextSize = 28
+    indicatorText.TextScaled = true
+    
+    -- Botão de cadeado (travar/destravar)
+    local lockButton = Instance.new("TextButton")
+    lockButton.Parent = modeIndicator
+    lockButton.Size = UDim2.new(0, 30, 0, 30)
+    lockButton.Position = UDim2.new(0.5, -15, 1, -35)
+    lockButton.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+    lockButton.Text = "🔓" -- Destravado inicialmente
+    lockButton.TextColor3 = Color3.new(1, 1, 1)
+    lockButton.Font = Enum.Font.GothamBold
+    lockButton.TextSize = 18
+    lockButton.AutoButtonColor = false
+    
+    local lockCorner = Instance.new("UICorner")
+    lockCorner.Parent = lockButton
+    lockCorner.CornerRadius = UDim.new(1, 0) -- Redondo
+    
+    -- Rótulo do modo
+    local modeLabel = Instance.new("TextLabel")
+    modeLabel.Parent = modeIndicator
+    modeLabel.Size = UDim2.new(1, 0, 0, 20)
+    modeLabel.Position = UDim2.new(0, 0, 1, -20)
+    modeLabel.BackgroundTransparency = 1
+    modeLabel.Text = currentMode == "L" and "CHAR" or "CAM"
+    modeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    modeLabel.Font = Enum.Font.Gotham
+    modeLabel.TextSize = 12
+    
+    -- ==============================================
+    -- FUNÇÕES DE CONTROLE
+    -- ==============================================
+    local function setDraggable(state)
+        isDraggable = state
+        modeIndicator.Draggable = state
+        lockButton.Text = state and "🔓" or "🔒"
+        lockButton.BackgroundColor3 = state and 
+            Color3.fromRGB(60, 60, 70) or Color3.fromRGB(100, 50, 50)
+        
+        -- Feedback visual
+        TweenService:Create(lockButton, TweenInfo.new(0.3), {
+            BackgroundColor3 = state and Color3.fromRGB(60, 60, 70) or Color3.fromRGB(100, 50, 50)
+        }):Play()
+    end
+    
+    local function updateButtonColor()
+        if currentMode == "L" then
+            mainButton.BackgroundColor3 = _G.CharLockEnabled and 
+                Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+            mainButton.Text = _G.CharLockEnabled and "CHAR ON" or "CHAR OFF"
+            modeLabel.Text = "CHAR"
+        else
+            mainButton.BackgroundColor3 = _G.CamLockEnabled and 
+                Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+            mainButton.Text = _G.CamLockEnabled and "CAM ON" or "CAM OFF"
+            modeLabel.Text = "CAM"
+        end
+        indicatorText.Text = currentMode
+    end
+    
+    -- ==============================================
+    -- EVENTOS
+    -- ==============================================
+    
+    -- Clique no cadeado (travar/destravar)
+    lockButton.MouseButton1Click:Connect(function()
+        setDraggable(not isDraggable)
+    end)
+    
+    -- Clique no indicador (alternar modo) - só funciona se estiver travado?
+    -- Melhor: sempre funciona, mas se estiver destravado, também arrasta
+    modeIndicator.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or 
+           input.UserInputType == Enum.UserInputType.MouseButton1 then
+            
+            -- Se não for no cadeado, alterna modo
+            if input.Position then
+                local absPos = modeIndicator.AbsolutePosition
+                local mousePos = Vector2.new(input.Position.X, input.Position.Y)
+                local lockBtnPos = lockButton.AbsolutePosition
+                local lockBtnSize = lockButton.AbsoluteSize
+                
+                -- Verifica se clicou no cadeado
+                local clickedLock = (mousePos.X >= lockBtnPos.X and mousePos.X <= lockBtnPos.X + lockBtnSize.X and
+                                     mousePos.Y >= lockBtnPos.Y and mousePos.Y <= lockBtnPos.Y + lockBtnSize.Y)
+                
+                if not clickedLock then
+                    -- Alternar modo
+                    currentMode = (currentMode == "L") and "P" or "L"
+                    indicatorText.Text = currentMode
+                    updateButtonColor()
+                    
+                    -- Feedback visual
+                    TweenService:Create(modeIndicator, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(80, 80, 100)}):Play()
+                    task.wait(0.1)
+                    TweenService:Create(modeIndicator, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 50)}):Play()
+                end
+            end
+        end
+    end)
+    
+    -- Clique no botão principal
+    mainButton.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or 
+           input.UserInputType == Enum.UserInputType.MouseButton1 then
+            
+            if currentMode == "L" then
+                _G.CharLockEnabled = not _G.CharLockEnabled
+                if _G.CharacterLock then
+                    _G.CharacterLock(_G.CharLockEnabled)
+                end
+                print("👤 Character Lock:", _G.CharLockEnabled and "ON" or "OFF")
+            else
+                _G.CamLockEnabled = not _G.CamLockEnabled
+                if _G.CameraLock then
+                    _G.CameraLock(_G.CamLockEnabled)
+                end
+                print("📷 Camera Lock:", _G.CamLockEnabled and "ON" or "OFF")
+            end
+            
+            updateButtonColor()
+            
+            -- Feedback visual
+            mainButton.TextSize = 20
+            task.wait(0.1)
+            mainButton.TextSize = 16
+        end
+    end)
+    
+    -- Monitorar mudanças nas variáveis
+    spawn(function()
+        while true do
+            task.wait(0.2)
+            updateButtonColor()
+        end
+    end)
+    
+    -- Atualizar cor inicial
+    updateButtonColor()
+    
+    print("✅ Mobile UI configurada com sucesso!")
+    print("📱 Use o cadeado 🔓/🔒 para travar/arrastar o indicador")
 end
 
--- Executa a configuração
-disableCameraCollision()
+-- ==============================================
+-- CONFIGURAR PARA MOBILE
+-- ==============================================
+if UserInputService.TouchEnabled then
+    task.wait(2)
+    setupMobileUI()
+else
+    -- MODO PC (teclas)
+    UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        
+        if input.KeyCode == Enum.KeyCode.P then
+            _G.CamLockEnabled = not _G.CamLockEnabled
+            if _G.CameraLock then
+                _G.CameraLock(_G.CamLockEnabled)
+            end
+            print("📷 Camera Lock:", _G.CamLockEnabled and "ON" or "OFF")
+            
+        elseif input.KeyCode == Enum.KeyCode.L then
+            _G.CharLockEnabled = not _G.CharLockEnabled
+            if _G.CharacterLock then
+                _G.CharacterLock(_G.CharLockEnabled)
+            end
+            print("👤 Character Lock:", _G.CharLockEnabled and "ON" or "OFF")
+        end
+    end)
+    
+    print("💻 PC Mode: Pressione P (Camera) ou L (Character)")
+end
 
--- Opcional: Se quiser que a câmera NUNCA dê zoom automático ao bater em algo
--- Você pode criar um sistema de câmera customizado simples:
-camera.ChildAdded:Connect(function(child)
-    if child:IsA("ZoomController") or child.Name == "CameraWheel" then
-        child:Destroy()
-    end
-end)
+-- Recriar UI ao renascer
+if UserInputService.TouchEnabled then
+    player.CharacterAdded:Connect(function()
+        task.wait(3)
+        setupMobileUI()
+    end)
+end
