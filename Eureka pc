@@ -5,58 +5,78 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
 local camera = workspace.CurrentCamera
 
+-- Load the external script (Silent/LockOn)
+-- Note: External scripts often force MouseBehavior; we will override that.
 pcall(function()
-    local keybinds = player.PlayerGui:WaitForChild("KeybindsDisplayGui", 5)
-    if keybinds then keybinds:Destroy() end
+    loadstring(game:HttpGet("https://rawscripts.net/raw/The-Strongest-Battlegrounds-Tsb-Op-Silent-And-LockOn-44541"))()
 end)
 
+-- Function to clean up Keybinds UI
+local function removeKeybindsGui()
+    local keybinds = player.PlayerGui:WaitForChild("KeybindsDisplayGui", 3)
+    if keybinds then keybinds:Destroy() end
+end
+
+-- Function to fix UI layout and remove extra buttons
 local function setupUI()
     local contextGui = player.PlayerGui:FindFirstChild("ContextActionGui")
-    if contextGui then
-        local buttonFrame = contextGui:FindFirstChild("ContextButtonFrame")
-        if buttonFrame then
-            local buttons = {}
-            for _, child in ipairs(buttonFrame:GetChildren()) do
-                if child:IsA("GuiObject") then
-                    table.insert(buttons, child)
-                end
+    if not contextGui then return end
+    
+    local buttonFrame = contextGui:FindFirstChild("ContextButtonFrame")
+    if buttonFrame then
+        local buttons = {}
+        for _, child in ipairs(buttonFrame:GetChildren()) do
+            if child:IsA("GuiObject") then
+                table.insert(buttons, child)
             end
+        end
+        
+        -- Sort and reposition only if buttons exist
+        if #buttons > 0 then
+            table.sort(buttons, function(a, b) return a.Name < b.Name end)
             
-            table.sort(buttons, function(a, b)
-                return a.Name < b.Name
-            end)
-
+            -- Keep first button, resize and move it
             if buttons[1] then
                 buttons[1].Position = UDim2.new(1, -150, 1, -150)
                 buttons[1].Size = UDim2.new(0, 60, 0, 60)
             end
             
-            if buttons[2] then buttons[2]:Destroy() end
-            if buttons[3] then buttons[3]:Destroy() end
+            -- Destroy extra buttons (2 and 3)
+            for i = 2, #buttons do
+                if buttons[i] then buttons[i]:Destroy() end
+            end
         end
     end
 end
 
-local function disableCameraCollision()
+-- Function to handle camera settings and Force Unlock
+local function applyCameraSettings()
     player.CameraMinZoomDistance = 0.5
     player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+    -- Force Mouse back to default (Removes Forced Shiftlock)
+    UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 end
 
+-- Initial Setup
+removeKeybindsGui()
 setupUI()
-disableCameraCollision()
+applyCameraSettings()
 
-player.CharacterAdded:Connect(function()
-    disableCameraCollision()
+-- Re-apply on respawn
+player.CharacterAdded:Connect(function(char)
     task.wait(1)
+    removeKeybindsGui()
     setupUI()
+    applyCameraSettings()
 end)
 
+-- Input Listener
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     
+    -- Press 'P' to toggle Camera Occlusion
     if input.KeyCode == Enum.KeyCode.P then
         if player.DevCameraOcclusionMode == Enum.DevCameraOcclusionMode.Invisicam then
             player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Zoom
@@ -64,4 +84,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
             player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
         end
     end
-end)
+    
+    -- Press 'L' to manually Break/Remove Forced Shiftlock
+    if input.KeyCode == Enum.KeyCode.L then
+        UserInput
