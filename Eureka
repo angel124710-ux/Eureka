@@ -1,174 +1,97 @@
+loadstring(game:HttpGet("https://rawscripts.net/raw/The-Strongest-Battlegrounds-Tsb-Op-Silent-And-LockOn-44541"))()
+
+game:GetService("Players").LocalPlayer.PlayerGui.KeybindsDisplayGui:Destroy()
+
+local buttons = game:GetService("Players").LocalPlayer.PlayerGui.ContextActionGui.ContextButtonFrame:GetChildren()
+
+table.sort(buttons, function(a, b)
+    return a.Name < b.Name
+end)
+
+buttons[1].Position = UDim2.new(1, -180, 0.5, -190)
+buttons[1].Size = UDim2.new(0, 70, 0, 70)
+buttons[2]:Destroy()
+buttons[3]:Destroy()
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local Stats = game:GetService("Stats")
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
-local char = player.Character or player.CharacterAdded:Wait()
-local root = char:WaitForChild("HumanoidRootPart")
-local hum = char:WaitForChild("Humanoid")
-
--- // BYPASS DE VELOCIDADE (RONIX/EUREKA)
-local mt = getrawmetatable(game)
-local old = mt.__index
-setreadonly(mt, false)
-mt.__index = newcclosure(function(t, k)
-    if not checkcaller() and t == hum and (k == "WalkSpeed" or k == "JumpPower") then
-        return k == "WalkSpeed" and 16 or 50
+-- Esta função remove a detecção de obstrução da câmera
+local function disableCameraCollision()
+    if player.CameraMinZoomDistance ~= 0.5 then
+        player.CameraMinZoomDistance = 0.5
     end
-    return old(t, k)
-end)
-setreadonly(mt, true)
-
--- // PART INVISÍVEL 3D (MANTIDO)
-local uiPart = Instance.new("Part")
-uiPart.Size = Vector3.new(4,3,1)
-uiPart.Anchored = true
-uiPart.CanCollide = false
-uiPart.Transparency = 1
-uiPart.Name = "AR_UI_PRO"
-uiPart.Parent = workspace
-
--- // BILLBOARD
-local billboard = Instance.new("BillboardGui")
-billboard.Size = UDim2.new(0,450,0,300) -- Aumentado para caber infos
-billboard.AlwaysOnTop = true
-billboard.LightInfluence = 0
-billboard.Adornee = uiPart
-billboard.Parent = uiPart
-
--- // FRAME PRINCIPAL
-local main = Instance.new("Frame")
-main.Size = UDim2.fromScale(1,1)
-main.BackgroundColor3 = Color3.fromRGB(15, 10, 30)
-main.BackgroundTransparency = 0.3
-main.BorderSizePixel = 0
-main.Parent = billboard
-
-Instance.new("UICorner", main).CornerRadius = UDim.new(0,20)
-local stroke = Instance.new("UIStroke", main)
-stroke.Color = Color3.fromRGB(0, 255, 255)
-stroke.Thickness = 2
-
--- // TELEMETRIA (TEXTOS)
-local infoLabel = Instance.new("TextLabel")
-infoLabel.Size = UDim2.new(1, 0, 0.3, 0)
-infoLabel.BackgroundTransparency = 1
-infoLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
-infoLabel.Font = Enum.Font.Code
-infoLabel.TextScaled = true
-infoLabel.Parent = main
-
--- // BOTÕES (FLY E SPEED)
-local function createBtn(name, pos, text)
-    local btn = Instance.new("TextButton")
-    btn.Name = name
-    btn.Size = UDim2.new(0.4, 0, 0.2, 0)
-    btn.Position = pos
-    btn.Text = text
-    btn.TextScaled = true
-    btn.Font = Enum.Font.GothamBold
-    btn.BackgroundColor3 = Color3.fromRGB(60,0,130)
-    btn.TextColor3 = Color3.fromRGB(255,255,255)
-    btn.Parent = main
-    Instance.new("UICorner", btn)
-    return btn
+    
+    -- O DevTouchCameraRotation e o Invisicam são modos que lidam com colisão.
+    -- Para atravessar tudo, geralmente forçamos o modo de visualização.
+    player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
 end
 
-local flyBtn = createBtn("FlyBtn", UDim2.new(0.05, 0, 0.4, 0), "FLY: OFF")
-local speedBtn = createBtn("SpeedBtn", UDim2.new(0.55, 0, 0.4, 0), "SPEED: OFF")
-local dragArea = createBtn("DragArea", UDim2.new(0.05, 0, 0.7, 0), "ARRRASTE AQUI")
-dragArea.Size = UDim2.new(0.9, 0, 0.2, 0)
+-- Executa a configuração
+disableCameraCollision()
 
---------------------------------------------------
--- LÓGICA DOS HACKS
---------------------------------------------------
-local flying = false
-local speedOn = false
-
-flyBtn.Activated:Connect(function()
-    flying = not flying
-    flyBtn.Text = flying and "FLY: ON" or "FLY: OFF"
-    flyBtn.BackgroundColor3 = flying and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(60,0,130)
-    
-    if flying then
-        task.spawn(function()
-            local bv = Instance.new("BodyVelocity", root)
-            bv.MaxForce = Vector3.new(1,1,1) * math.huge
-            while flying and root do
-                bv.Velocity = camera.CFrame.LookVector * 100
-                task.wait()
-            end
-            bv:Destroy()
-        end)
+-- Opcional: Se quiser que a câmera NUNCA dê zoom automático ao bater em algo
+-- Você pode criar um sistema de câmera customizado simples:
+camera.ChildAdded:Connect(function(child)
+    if child:IsA("ZoomController") or child.Name == "CameraWheel" then
+        child:Destroy()
     end
 end)
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local localPlayer = Players.LocalPlayer
 
-speedBtn.Activated:Connect(function()
-    speedOn = not speedOn
-    hum.WalkSpeed = speedOn and 80 or 16
-    speedBtn.Text = speedOn and "SPEED: 80" or "SPEED: OFF"
-    speedBtn.BackgroundColor3 = speedOn and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(60,0,130)
-end)
+-- Configurações
+local MAX_DISTANCE = 100 -- Distância máxima para o bot focar
 
---------------------------------------------------
--- SISTEMA SPRING SUAVE (ORIGINAL)
---------------------------------------------------
-local offset = Vector3.new(4,2,-6)
-local targetOffset = offset
-local currentCF = root.CFrame * CFrame.new(offset)
-local velocity = Vector3.zero
-local stiffness = 12
-local damping = 0.85
+-- Função para encontrar o alvo mais próximo (Player ou NPC)
+local function getClosestTarget()
+    local closestTarget = nil
+    local shortestDistance = MAX_DISTANCE
 
-local dragging = false
-local lastInputPos
+    -- Percorre todos os objetos no Workspace
+    for _, obj in pairs(workspace:GetDescendants()) do
+        -- Verifica se o objeto tem um Humanoid e RootPart (característica de Players e NPCs)
+        if obj:IsA("Humanoid") and obj.Parent:FindFirstChild("HumanoidRootPart") then
+            local rootPart = obj.Parent.HumanoidRootPart
+            local character = localPlayer.Character
+            
+            -- Garante que não é o próprio jogador e que o alvo está vivo
+            if obj.Parent ~= character and obj.Health > 0 then
+                local distance = (character.HumanoidRootPart.Position - rootPart.Position).Magnitude
+                
+                if distance < shortestDistance then
+                    shortestDistance = distance
+                    closestTarget = rootPart
+                end
+            end
+        end
+    end
+    return closestTarget
+end
 
-dragArea.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		dragging = true
-		lastInputPos = input.Position
-	end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		dragging = false
-	end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-		local delta = input.Position - lastInputPos
-		lastInputPos = input.Position
-		targetOffset += Vector3.new(delta.X * 0.015, -delta.Y * 0.015, 0)
-	end
-end)
-
---------------------------------------------------
--- LOOP AR PRO + TELEMETRIA
---------------------------------------------------
-RunService.RenderStepped:Connect(function(dt)
-	if not root then return end
-
-    -- Atualiza Telemetria
-    local fps = math.floor(Stats.WorkspaceResources.FPS:GetValue())
-    local ping = math.floor(player:GetNetworkPing()*1000)
-    infoLabel.Text = string.format("FPS: %d | MS: %d\nPOS: %.0f, %.0f", fps, ping, root.Position.X, root.Position.Z)
-
-    -- Física da UI (MANTIDA IGUAL A SUA)
-	local targetPos = (root.CFrame * CFrame.new(targetOffset)).Position
-	local displacement = targetPos - currentCF.Position
-	velocity = (velocity + displacement * stiffness * dt) * damping
-	local newPos = currentCF.Position + velocity
-	local float = math.sin(tick()*2) * 0.15
-	
-	currentCF = CFrame.new(newPos + Vector3.new(0,float,0), camera.CFrame.Position)
-	uiPart.CFrame = currentCF
-	
-    -- Fade/Zoom (Sneak Peek Style)
-	local dist = (camera.CFrame.Position - root.Position).Magnitude
-	billboard.Enabled = dist < 2 -- Só aparece no zoom de primeira pessoa
+-- Loop de atualização
+RunService.RenderStepped:Connect(function()
+    local character = localPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+    
+    local rootPart = character.HumanoidRootPart
+    local humanoid = character:FindFirstChild("Humanoid")
+    
+    -- Busca o alvo (NPC ou Player)
+    local target = getClosestTarget()
+    
+    if target then
+        -- Desativa a rotação automática do Roblox para não dar conflito
+        if humanoid then humanoid.AutoRotate = false end
+        
+        -- Faz o corpo olhar para o alvo (travado no eixo Y para não tombar)
+        local targetPos = Vector3.new(target.Position.X, rootPart.Position.Y, target.Position.Z)
+        rootPart.CFrame = CFrame.lookAt(rootPart.Position, targetPos)
+    else
+        -- Se não houver alvo, devolve o controle de rotação ao Humanoid
+        if humanoid then humanoid.AutoRotate = true end
+    end
 end)
