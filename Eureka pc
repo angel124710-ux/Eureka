@@ -1,0 +1,67 @@
+loadstring(game:HttpGet("https://rawscripts.net/raw/The-Strongest-Battlegrounds-Tsb-Op-Silent-And-LockOn-44541"))()
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local camera = workspace.CurrentCamera
+
+pcall(function()
+    local keybinds = player.PlayerGui:WaitForChild("KeybindsDisplayGui", 5)
+    if keybinds then keybinds:Destroy() end
+end)
+
+local function setupUI()
+    local contextGui = player.PlayerGui:FindFirstChild("ContextActionGui")
+    if contextGui then
+        local buttonFrame = contextGui:FindFirstChild("ContextButtonFrame")
+        if buttonFrame then
+            local buttons = {}
+            for _, child in ipairs(buttonFrame:GetChildren()) do
+                if child:IsA("GuiObject") then
+                    table.insert(buttons, child)
+                end
+            end
+            
+            table.sort(buttons, function(a, b)
+                return a.Name < b.Name
+            end)
+
+            if buttons[1] then
+                buttons[1].Position = UDim2.new(1, -150, 1, -150)
+                buttons[1].Size = UDim2.new(0, 60, 0, 60)
+            end
+            
+            if buttons[2] then buttons[2]:Destroy() end
+            if buttons[3] then buttons[3]:Destroy() end
+        end
+    end
+end
+
+local function disableCameraCollision()
+    player.CameraMinZoomDistance = 0.5
+    player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+end
+
+setupUI()
+disableCameraCollision()
+
+player.CharacterAdded:Connect(function()
+    disableCameraCollision()
+    task.wait(1)
+    setupUI()
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    if input.KeyCode == Enum.KeyCode.P then
+        if player.DevCameraOcclusionMode == Enum.DevCameraOcclusionMode.Invisicam then
+            player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Zoom
+        else
+            player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+        end
+    end
+end)
