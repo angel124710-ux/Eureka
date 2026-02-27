@@ -1,90 +1,116 @@
-loadstring(game:HttpGet("https://rawscripts.net/raw/The-Strongest-Battlegrounds-Tsb-Op-Silent-And-LockOn-44541"))()
+_G.ScriptEnabled = true
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-
 local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
+local pGui = player:WaitForChild("PlayerGui")
 
--- Load the external script (Silent/LockOn)
--- Note: External scripts often force MouseBehavior; we will override that.
+-- 1. Load External Logic
 pcall(function()
     loadstring(game:HttpGet("https://rawscripts.net/raw/The-Strongest-Battlegrounds-Tsb-Op-Silent-And-LockOn-44541"))()
 end)
 
--- Function to clean up Keybinds UI
-local function removeKeybindsGui()
-    local keybinds = player.PlayerGui:WaitForChild("KeybindsDisplayGui", 3)
-    if keybinds then keybinds:Destroy() end
-end
-
--- Function to fix UI layout and remove extra buttons
-local function setupUI()
-    local contextGui = player.PlayerGui:FindFirstChild("ContextActionGui")
-    if not contextGui then return end
+-- 2. Clean UI, Remove Tips, and Fix Mobile Buttons
+local function fullCleanup()
+    -- List of common UI names for tips/keybinds/clutter
+    local clutterNames = {"KeybindsDisplayGui", "Tips", "TipGui", "HintGui", "TutorialGui", "MessageGui"}
     
-    local buttonFrame = contextGui:FindFirstChild("ContextButtonFrame")
-    if buttonFrame then
-        local buttons = {}
-        for _, child in ipairs(buttonFrame:GetChildren()) do
-            if child:IsA("GuiObject") then
-                table.insert(buttons, child)
+    for _, name in ipairs(clutterNames) do
+        local ui = pGui:FindFirstChild(name)
+        if ui then ui:Destroy() end
+    end
+
+    -- Clean up the Mobile Buttons (ContextActionGui)
+    local contextGui = pGui:FindFirstChild("ContextActionGui")
+    if contextGui then
+        local buttonFrame = contextGui:FindFirstChild("ContextButtonFrame")
+        if buttonFrame then
+            local buttons = {}
+            for _, child in ipairs(buttonFrame:GetChildren()) do
+                if child:IsA("GuiObject") then table.insert(buttons, child) end
             end
-        end
-        
-        -- Sort and reposition only if buttons exist
-        if #buttons > 0 then
-            table.sort(buttons, function(a, b) return a.Name < b.Name end)
-            
-            -- Keep first button, resize and move it
-            if buttons[1] then
-                buttons[1].Position = UDim2.new(1, -150, 1, -150)
-                buttons[1].Size = UDim2.new(0, 60, 0, 60)
-            end
-            
-            -- Destroy extra buttons (2 and 3)
-            for i = 2, #buttons do
-                if buttons[i] then buttons[i]:Destroy() end
+            if #buttons > 0 then
+                table.sort(buttons, function(a, b) return a.Name < b.Name end)
+                if buttons[1] then
+                    buttons[1].Position = UDim2.new(1, -150, 1, -150)
+                    buttons[1].Size = UDim2.new(0, 60, 0, 60)
+                end
+                for i = 2, #buttons do if buttons[i] then buttons[i]:Destroy() end end
             end
         end
     end
 end
 
--- Function to handle camera settings and Force Unlock
-local function applyCameraSettings()
-    player.CameraMinZoomDistance = 0.5
-    player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
-    -- Force Mouse back to default (Removes Forced Shiftlock)
-    UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+-- 3. Toggle Logic
+local function updateState()
+    if not _G.ScriptEnabled then
+        -- Force normal camera and mouse
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Zoom
+        player.CameraMinZoomDistance = 0.5
+    else
+        -- Active Script Settings
+        player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+        player.CameraMinZoomDistance = 0.5
+    end
 end
 
--- Initial Setup
-removeKeybindsGui()
-setupUI()
-applyCameraSettings()
+-- 4. Mobile Toggle UI
+local function createMobileUI()
+    if pGui:FindFirstChild("ScriptControl") then pGui.ScriptControl:Destroy() end
+    local sg = Instance.new("ScreenGui", pGui)
+    sg.Name = "ScriptControl"
+    sg.ResetOnSpawn = false
 
--- Re-apply on respawn
-player.CharacterAdded:Connect(function(char)
-    task.wait(1)
-    removeKeybindsGui()
-    setupUI()
-    applyCameraSettings()
+    local btn = Instance.new("TextButton", sg)
+    btn.Size = UDim2.new(0, 110, 0, 40)
+    btn.Position = UDim2.new(0, 10, 0, 200)
+    btn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+    btn.Text = "SCRIPT: ON"
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 14
+    local corner = Instance.new("UICorner", btn)
+    
+    btn.MouseButton1Click:Connect(function()
+        _G.ScriptEnabled = not _G.ScriptEnabled
+        btn.Text = _G.ScriptEnabled and "SCRIPT: ON" or "SCRIPT: OFF"
+        btn.BackgroundColor3 = _G.ScriptEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
+        updateState()
+    end)
+end
+
+-- 5. Anti-Shiftlock Loop
+RunService.RenderStepped:Connect(function()
+    if not _G.ScriptEnabled then
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+    end
 end)
 
--- Input Listener
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    
-    -- Press 'P' to toggle Camera Occlusion
+-- Initialize
+fullCleanup()
+updateState()
+createMobileUI()
+
+player.CharacterAdded:Connect(function()
+    task.wait(1)
+    fullCleanup()
+    updateState()
+end)
+
+-- 6. PC Keybind (P)
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
     if input.KeyCode == Enum.KeyCode.P then
-        if player.DevCameraOcclusionMode == Enum.DevCameraOcclusionMode.Invisicam then
-            player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Zoom
-        else
-            player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+        _G.ScriptEnabled = not _G.ScriptEnabled
+        updateState()
+        
+        -- Sync the Mobile Button text if it exists
+        local btn = pGui.ScriptControl:FindFirstChildOfClass("TextButton")
+        if btn then
+            btn.Text = _G.ScriptEnabled and "SCRIPT: ON" or "SCRIPT: OFF"
+            btn.BackgroundColor3 = _G.ScriptEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
         end
     end
-    
-    -- Press 'L' to manually Break/Remove Forced Shiftlock
-    if input.KeyCode == Enum.KeyCode.L then
-        UserInput
+end)
