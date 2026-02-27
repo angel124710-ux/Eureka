@@ -1,6 +1,6 @@
-
-
-_G.ScriptEnabled = true
+_G.ScriptEnabled = false
+_G.CameraEnabled = false
+_G.Loaded = false
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -8,111 +8,155 @@ local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 local pGui = player:WaitForChild("PlayerGui")
 
--- 1. Load External Logic
-pcall(function()
-    loadstring(game:HttpGet("https://rawscripts.net/raw/The-Strongest-Battlegrounds-Tsb-Op-Silent-And-LockOn-44541"))()
-end)
+-- 1. Loader do aimbot original (mantém TUDO dele)
+local function loadAimbot()
+    if not _G.Loaded then
+        pcall(function()
+            loadstring(game:HttpGet("https://rawscripts.net/raw/The-Strongest-Battlegrounds-Tsb-Op-Silent-And-LockOn-44541"))()
+            _G.Loaded = true
+        end)
+    end
+end
 
--- 2. Clean UI, Remove Tips, and Fix Mobile Buttons
+-- 2. Cleanup (NÃO mexe no aimbot)
 local function fullCleanup()
-    -- List of common UI names for tips/keybinds/clutter
     local clutterNames = {"KeybindsDisplayGui", "Tips", "TipGui", "HintGui", "TutorialGui", "MessageGui"}
-    
     for _, name in ipairs(clutterNames) do
         local ui = pGui:FindFirstChild(name)
         if ui then ui:Destroy() end
     end
-
-    -- Clean up the Mobile Buttons (ContextActionGui)
-    local contextGui = pGui:FindFirstChild("ContextActionGui")
-    if contextGui then
-        local buttonFrame = contextGui:FindFirstChild("ContextButtonFrame")
-        if buttonFrame then
-            local buttons = {}
-            for _, child in ipairs(buttonFrame:GetChildren()) do
-                if child:IsA("GuiObject") then table.insert(buttons, child) end
-            end
-            if #buttons > 0 then
-                table.sort(buttons, function(a, b) return a.Name < b.Name end)
-                if buttons[1] then
-                    buttons[1].Position = UDim2.new(1, -150, 1, -150)
-                    buttons[1].Size = UDim2.new(0, 60, 0, 60)
-                end
-                for i = 2, #buttons do if buttons[i] then buttons[i]:Destroy() end end
-            end
-        end
-    end
 end
 
--- 3. Toggle Logic
-local function updateState()
-    if not _G.ScriptEnabled then
-        -- Force normal camera and mouse
-        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-        player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Zoom
-        player.CameraMinZoomDistance = 0.5
+-- 3. Toggle do aimbot original (ativa/desativa suas funções internas)
+local function toggleAimbot()
+    if _G.ScriptEnabled then
+        loadAimbot()
+        -- Ativa toggles do script original (ajuste nomes se necessário)
+        if _G.ToggleAim then _G.ToggleAim(true) end
+        if _G.CharacterLock then _G.CharacterLock(true) end
     else
-        -- Active Script Settings
-        player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
-        player.CameraMinZoomDistance = 0.5
+        -- Desativa toggles do script original
+        if _G.ToggleAim then _G.ToggleAim(false) end
+        if _G.CharacterLock then _G.CharacterLock(false) end
     end
 end
 
--- 4. Mobile Toggle UI
+-- 4. Mobile GUI (controla o aimbot original)
 local function createMobileUI()
-    if pGui:FindFirstChild("ScriptControl") then pGui.ScriptControl:Destroy() end
+    fullCleanup()
+    
     local sg = Instance.new("ScreenGui", pGui)
     sg.Name = "ScriptControl"
     sg.ResetOnSpawn = false
-
-    local btn = Instance.new("TextButton", sg)
-    btn.Size = UDim2.new(0, 110, 0, 40)
-    btn.Position = UDim2.new(0, 10, 0, 200)
-    btn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
-    btn.Text = "SCRIPT: ON"
-    btn.TextColor3 = Color3.new(1, 1, 1)
-    btn.Font = Enum.Font.SourceSansBold
-    btn.TextSize = 14
-    local corner = Instance.new("UICorner", btn)
     
-    btn.MouseButton1Click:Connect(function()
+    local mainFrame = Instance.new("Frame", sg)
+    mainFrame.Size = UDim2.new(0, 140, 0, 100)
+    mainFrame.Position = UDim2.new(0, 10, 0, 150)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    mainFrame.BorderSizePixel = 0
+    local mainCorner = Instance.new("UICorner", mainFrame)
+    mainCorner.CornerRadius = UDim.new(0, 12)
+    
+    local title = Instance.new("TextLabel", mainFrame)
+    title.Size = UDim2.new(1, 0, 0, 25)
+    title.Position = UDim2.new(0, 0, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "AIMBOT GUI"
+    title.TextColor3 = Color3.new(1,1,1)
+    title.Font = Enum.Font.SourceSansBold
+    title.TextSize = 16
+    
+    -- Character/Aimbot Toggle (ativa o script todo)
+    local aimBtn = Instance.new("TextButton", mainFrame)
+    aimBtn.Size = UDim2.new(0.48, -3, 0, 35)
+    aimBtn.Position = UDim2.new(0, 3, 0, 30)
+    aimBtn.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
+    aimBtn.Text = "AIMBOT: OFF"
+    aimBtn.TextColor3 = Color3.new(1,1,1)
+    aimBtn.Font = Enum.Font.SourceSans
+    aimBtn.TextSize = 14
+    local aimCorner = Instance.new("UICorner", aimBtn)
+    
+    -- Camera Toggle (se o script tiver)
+    local camBtn = Instance.new("TextButton", mainFrame)
+    camBtn.Size = UDim2.new(0.48, -3, 0, 35)
+    camBtn.Position = UDim2.new(0.52, 3, 0, 30)
+    camBtn.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
+    camBtn.Text = "CAM: OFF"
+    camBtn.TextColor3 = Color3.new(1,1,1)
+    camBtn.Font = Enum.Font.SourceSans
+    camBtn.TextSize = 14
+    local camCorner = Instance.new("UICorner", camBtn)
+    
+    aimBtn.MouseButton1Click:Connect(function()
         _G.ScriptEnabled = not _G.ScriptEnabled
-        btn.Text = _G.ScriptEnabled and "SCRIPT: ON" or "SCRIPT: OFF"
-        btn.BackgroundColor3 = _G.ScriptEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
-        updateState()
+        aimBtn.Text = _G.ScriptEnabled and "AIMBOT: ON" or "AIMBOT: OFF"
+        aimBtn.BackgroundColor3 = _G.ScriptEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
+        toggleAimbot()
+    end)
+    
+    camBtn.MouseButton1Click:Connect(function()
+        _G.CameraEnabled = not _G.CameraEnabled
+        camBtn.Text = _G.CameraEnabled and "CAM: ON" or "CAM: OFF"
+        camBtn.BackgroundColor3 = _G.CameraEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
+        -- Toggle camera do script original
+        if _G.CameraLock then _G.CameraLock(_G.CameraEnabled) end
     end)
 end
 
--- 5. Anti-Shiftlock Loop
+-- 5. PC Keybinds (P = Aimbot todo, L = Camera)
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    
+    if input.KeyCode == Enum.KeyCode.P then
+        _G.ScriptEnabled = not _G.ScriptEnabled
+        toggleAimbot()
+        print("Aimbot:", _G.ScriptEnabled and "ON" or "OFF")
+    elseif input.KeyCode == Enum.KeyCode.L then
+        _G.CameraEnabled = not _G.CameraEnabled
+        if _G.CameraLock then _G.CameraLock(_G.CameraEnabled) end
+        print("Camera:", _G.CameraEnabled and "ON" or "OFF")
+    end
+end)
+
+-- 6. Camera NoC (melhora o aimbot)
+local closestEnemyCam = nil
 RunService.RenderStepped:Connect(function()
-    if not _G.ScriptEnabled then
+    if _G.CameraEnabled and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+        local root = player.Character.HumanoidRootPart
+        local newTarget = nil
+        local shortestDist = math.huge
+        
+        for _, otherPlayer in ipairs(Players:GetPlayers()) do
+            if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                local dist = (root.Position - otherPlayer.Character.HumanoidRootPart.Position).Magnitude
+                if dist < shortestDist then
+                    shortestDist = dist
+                    newTarget = otherPlayer.Character.HumanoidRootPart
+                end
+            end
+        end
+        
+        if newTarget and newTarget ~= closestEnemyCam then
+            closestEnemyCam = newTarget
+        end
+        
+        if closestEnemyCam then
+            workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, closestEnemyCam.Position)
+            player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+            UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+        end
+    else
+        player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Zoom
         UserInputService.MouseBehavior = Enum.MouseBehavior.Default
     end
 end)
 
 -- Initialize
 fullCleanup()
-updateState()
 createMobileUI()
-
 player.CharacterAdded:Connect(function()
     task.wait(1)
     fullCleanup()
-    updateState()
-end)
-
--- 6. PC Keybind (P)
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.P then
-        _G.ScriptEnabled = not _G.ScriptEnabled
-        updateState()
-        
-        -- Sync the Mobile Button text if it exists
-        local btn = pGui.ScriptControl:FindFirstChildOfClass("TextButton")
-        if btn then
-            btn.Text = _G.ScriptEnabled and "SCRIPT: ON" or "SCRIPT: OFF"
-            btn.BackgroundColor3 = _G.ScriptEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
-        end
-    end
+    createMobileUI()
 end)
