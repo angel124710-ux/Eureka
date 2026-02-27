@@ -1,4 +1,4 @@
-loadstring(game:HttpGet("https://rawscripts.net/raw/The-Strongest-Battlegrounds-Tsb-Op-Silent-And-LockOn-44541"))()
+
 
 _G.ScriptEnabled = true
 
