@@ -1,221 +1,127 @@
---[[
-    Universal Lock Controller para TSB
-    - Carrega o script original ofuscado PRIMEIRO
-    - PC: Teclas P (cam lock) | L (character lock)
-    - Mobile: Botão único com switch P/L
-]]
+-- ============================================
+-- PREDICT ULTRA SIMPLES - MOBILE
+-- 100% funcionando, sem frescura
+-- ============================================
 
--- Variáveis de estado (serão atualizadas pelo script original)
-_G.CharLockEnabled = _G.CharLockEnabled or false
-_G.CamLockEnabled = _G.CamLockEnabled or false
+-- Mostrar mensagem na tela
+game:GetService("StarterGui"):SetCore("SendNotification", {
+    Title = "🔵 PREDICT",
+    Text = "Sistema de predição ativado!",
+    Duration = 3
+})
 
-local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local player = Players.LocalPlayer
-local pGui = player:WaitForChild("PlayerGui")
+print("✅ PREDICT CARREGADO - Olhe para os inimigos")
 
--- ==============================================
--- 1. CARREGAR O SCRIPT ORIGINAL (OBRIGATÓRIO)
--- ==============================================
-local function loadOriginalScript()
-    local success, result = pcall(function()
-        -- O link que você forneceu
-        local scriptContent = game:HttpGet("https://rawscripts.net/raw/The-Strongest-Battlegrounds-Tsb-Op-Silent-And-LockOn-44541")
-        local func = loadstring(scriptContent)
-        if func then
-            func() -- Executa o script ofuscado
-            print("✅ Script original carregado com sucesso!")
-            return true
-        end
-    end)
+-- Variáveis
+local player = game:GetService("Players").LocalPlayer
+local camera = workspace.CurrentCamera
+local runService = game:GetService("RunService")
+
+-- Tabela para guardar os desenhos
+local desenhos = {}
+
+-- Função para criar desenho
+local function criarDesenho(alvo)
+    if desenhos[alvo] then return end
     
-    if not success then
-        warn("❌ Falha ao carregar o script original. O script pode não funcionar.")
-        return false
-    end
-    return true
+    desenhos[alvo] = {
+        ponto = Drawing.new("Circle"),
+        linha = Drawing.new("Line"),
+        ultimaPos = nil,
+        ultimoTempo = tick()
+    }
+    
+    -- Configurar ponto
+    desenhos[alvo].ponto.Visible = false
+    desenhos[alvo].ponto.Color = Color3.fromRGB(0, 200, 255)
+    desenhos[alvo].ponto.Thickness = 2
+    desenhos[alvo].ponto.NumSides = 20
+    desenhos[alvo].ponto.Radius = 8
+    desenhos[alvo].ponto.Filled = true
+    desenhos[alvo].ponto.Transparency = 0.6
+    
+    -- Configurar linha
+    desenhos[alvo].linha.Visible = false
+    desenhos[alvo].linha.Color = Color3.fromRGB(0, 200, 255)
+    desenhos[alvo].linha.Thickness = 2
+    desenhos[alvo].linha.Transparency = 0.5
 end
 
--- Carrega o script original imediatamente
-local originalLoaded = loadOriginalScript()
-
--- ==============================================
--- 2. DETECTAR PLATAFORMA E LIMPAR UI ANTIGA
--- ==============================================
-local function isMobile()
-    return UserInputService.TouchEnabled and not UserInputService.MouseEnabled
-end
-
-local function cleanup()
-    local old = pGui:FindFirstChild("MobileLockController")
-    if old then old:Destroy() end
-end
-
--- ==============================================
--- 3. SE FOR MOBILE, CRIAR UI
--- ==============================================
-if isMobile() then
-    cleanup()
+-- Loop principal
+runService.RenderStepped:Connect(function()
+    local agora = tick()
     
-    -- Localizar o botão original (que o script ofuscado cria)
-    local originalButton = nil
-    local contextFrame = pGui:FindFirstChild("ContextActionGui") and 
-                         pGui.ContextActionGui:FindFirstChild("ContextButtonFrame")
-    
-    if contextFrame then
-        local buttons = contextFrame:GetChildren()
-        table.sort(buttons, function(a, b) return a.Name < b.Name end)
-        -- O script original destrói 2 botões, sobra 1
-        originalButton = buttons[1]
-    end
-    
-    -- Criar nossa UI
-    local sg = Instance.new("ScreenGui")
-    sg.Name = "MobileLockController"
-    sg.Parent = pGui
-    sg.ResetOnSpawn = false
-    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    sg.IgnoreGuiInset = true
-    
-    local mainFrame = Instance.new("Frame")
-    mainFrame.Parent = sg
-    mainFrame.Size = UDim2.new(0, 200, 0, 120)
-    mainFrame.Position = UDim2.new(0.5, -100, 0.8, -60)
-    mainFrame.BackgroundTransparency = 1
-    mainFrame.Active = true
-    mainFrame.Draggable = true
-    
-    -- Botão grande (cópia do original)
-    local bigButton = Instance.new("TextButton")
-    bigButton.Parent = mainFrame
-    bigButton.Size = UDim2.new(0, 80, 0, 80)
-    bigButton.Position = UDim2.new(0, 10, 0, 10)
-    bigButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-    bigButton.Text = "LOCK"
-    bigButton.TextColor3 = Color3.new(1,1,1)
-    bigButton.Font = Enum.Font.GothamBold
-    bigButton.TextSize = 16
-    bigButton.AutoButtonColor = false
-    
-    -- Se o original existir, copia a aparência
-    if originalButton then
-        bigButton.BackgroundColor3 = originalButton.BackgroundColor3
-        bigButton.Text = originalButton.Text
-        bigButton.Font = originalButton.Font
-        bigButton.TextSize = originalButton.TextSize
-        bigButton.Size = originalButton.Size
-        bigButton.Position = originalButton.Position
-        originalButton.Visible = false
-    end
-    
-    local bigCorner = Instance.new("UICorner")
-    bigCorner.Parent = bigButton
-    bigCorner.CornerRadius = UDim.new(0, 12)
-    
-    -- Switch P/L
-    local mode = "L"
-    local switchFrame = Instance.new("Frame")
-    switchFrame.Parent = mainFrame
-    switchFrame.Size = UDim2.new(0, 40, 0, 40)
-    switchFrame.Position = UDim2.new(0, 100, 0, 30)
-    switchFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    switchFrame.BackgroundTransparency = 0.2
-    switchFrame.Active = true
-    switchFrame.Draggable = true
-    
-    local switchCorner = Instance.new("UICorner")
-    switchCorner.Parent = switchFrame
-    switchCorner.CornerRadius = UDim.new(1, 0)
-    
-    local switchButton = Instance.new("TextButton")
-    switchButton.Parent = switchFrame
-    switchButton.Size = UDim2.new(1, 0, 1, 0)
-    switchButton.BackgroundTransparency = 1
-    switchButton.Text = mode
-    switchButton.TextColor3 = Color3.fromRGB(0, 255, 255)
-    switchButton.Font = Enum.Font.GothamBold
-    switchButton.TextSize = 20
-    switchButton.AutoButtonColor = false
-    
-    -- Atualizar cor do botão baseado no modo e estado
-    local function updateButtonColor()
-        if mode == "L" then
-            bigButton.BackgroundColor3 = _G.CharLockEnabled and 
-                Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
-        else
-            bigButton.BackgroundColor3 = _G.CamLockEnabled and 
-                Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
-        end
-    end
-    
-    spawn(function()
-        while true do
-            task.wait(0.1)
-            updateButtonColor()
-        end
-    end)
-    
-    -- Evento do switch
-    switchButton.MouseButton1Click:Connect(function()
-        mode = (mode == "L") and "P" or "L"
-        switchButton.Text = mode
-        updateButtonColor()
-    end)
-    
-    -- Evento do botão grande
-    bigButton.MouseButton1Click:Connect(function()
-        if mode == "L" then
-            _G.CharLockEnabled = not _G.CharLockEnabled
-            if _G.CharacterLock then
-                _G.CharacterLock(_G.CharLockEnabled)
-            end
-        else
-            _G.CamLockEnabled = not _G.CamLockEnabled
-            if _G.CameraLock then
-                _G.CameraLock(_G.CamLockEnabled)
-            end
-        end
-        updateButtonColor()
-    end)
-    
-    if originalButton then
-        originalButton.Visible = false
-    end
-    
-    print("📱 Mobile UI carregada. Use o switch P/L.")
-    
-else
-    -- ==============================================
-    -- MODO PC: Apenas teclas
-    -- ==============================================
-    UserInputService.InputBegan:Connect(function(input, gpe)
-        if gpe then return end
-        
-        if input.KeyCode == Enum.KeyCode.P then
-            _G.CamLockEnabled = not _G.CamLockEnabled
-            if _G.CameraLock then
-                _G.CameraLock(_G.CamLockEnabled)
-            end
-            print("📷 Camera Lock:", _G.CamLockEnabled and "ON" or "OFF")
+    -- Procurar personagens
+    for _, obj in pairs(workspace:GetChildren()) do
+        -- Verificar se é um personagem
+        if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("HumanoidRootPart") then
+            local humano = obj.Humanoid
+            local parte = obj.HumanoidRootPart
             
-        elseif input.KeyCode == Enum.KeyCode.L then
-            _G.CharLockEnabled = not _G.CharLockEnabled
-            if _G.CharacterLock then
-                _G.CharacterLock(_G.CharLockEnabled)
+            -- Ignorar mortos e si mesmo
+            if humano.Health <= 0 or obj == player.Character then
+                continue
             end
-            print("👤 Character Lock:", _G.CharLockEnabled and "ON" or "OFF")
+            
+            -- Criar desenho para ele
+            criarDesenho(obj)
+            
+            local dados = desenhos[obj]
+            local posAtual = parte.Position
+            
+            -- Calcular velocidade
+            local velocidade = Vector3.new(0, 0, 0)
+            if dados.ultimaPos then
+                local tempoDiff = agora - dados.ultimoTempo
+                if tempoDiff > 0 and tempoDiff < 1 then
+                    velocidade = (posAtual - dados.ultimaPos) / tempoDiff
+                end
+            end
+            
+            -- Guardar posição para próximo frame
+            dados.ultimaPos = posAtual
+            dados.ultimoTempo = agora
+            
+            -- Calcular onde vai estar em 0.4 segundos
+            local posFutura = posAtual + (velocidade * 0.4)
+            
+            -- Converter para posição na tela
+            local posTelaAtual, naTelaAtual = camera:WorldToViewportPoint(posAtual)
+            local posTelaFutura, naTelaFutura = camera:WorldToViewportPoint(posFutura)
+            
+            -- Mostrar na tela
+            if naTelaFutura then
+                dados.ponto.Visible = true
+                dados.ponto.Position = Vector2.new(posTelaFutura.X, posTelaFutura.Y)
+                
+                if naTelaAtual then
+                    dados.linha.Visible = true
+                    dados.linha.From = Vector2.new(posTelaAtual.X, posTelaAtual.Y)
+                    dados.linha.To = Vector2.new(posTelaFutura.X, posTelaFutura.Y)
+                else
+                    dados.linha.Visible = false
+                end
+            else
+                dados.ponto.Visible = false
+                dados.linha.Visible = false
+            end
         end
-    end)
+    end
     
-    print("💻 PC mode: Pressione P (Cam) ou L (Character)")
-end
+    -- Limpar desenhos de personagens que morreram
+    for obj, dados in pairs(desenhos) do
+        if not obj or not obj.Parent or not obj:FindFirstChild("Humanoid") or obj.Humanoid.Health <= 0 then
+            if dados.ponto then dados.ponto:Remove() end
+            if dados.linha then dados.linha:Remove() end
+            desenhos[obj] = nil
+        end
+    end
+end)
 
--- Recriar UI ao renascer (mobile)
-if isMobile() then
-    player.CharacterAdded:Connect(function()
-        task.wait(2)
-        cleanup()
-        -- Recriar UI...
-    end)
-end
+-- Limpeza
+game:BindToClose(function()
+    for _, dados in pairs(desenhos) do
+        if dados.ponto then dados.ponto:Remove() end
+        if dados.linha then dados.linha:Remove() end
+    end
+end)
