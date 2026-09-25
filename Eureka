@@ -1,273 +1,519 @@
--- Carregar script original
-loadstring(game:HttpGet("https://rawscripts.net/raw/The-Strongest-Battlegrounds-Tsb-Op-Silent-And-LockOn-44541"))()
-
--- Pequena pausa para garantir que o script carregou
-task.wait(1)
-
--- Remover GUI de teclas (só atrapalha)
-pcall(function()
-    game:GetService("Players").LocalPlayer.PlayerGui.KeybindsDisplayGui:Destroy()
-end)
+-- GHOST 3D MENU - LocalScript para uso no seu próprio jogo
+-- Painel holográfico 3D: WalkSpeed, JumpPower, Noclip, Infinite Jump, ESP
+-- Funciona em PC e celular
 
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
 local player = Players.LocalPlayer
-local pGui = player:WaitForChild("PlayerGui")
+local character = nil
+local root = nil
+local humanoid = nil
+local currentPos = nil
 
--- ==============================================
--- VARIÁVEIS DE ESTADO
--- ==============================================
-local currentMode = "L" -- "L" = Character Lock, "P" = Camera Lock
-local isDraggable = true -- Começa arrastável
-_G.CharLockEnabled = _G.CharLockEnabled or false
-_G.CamLockEnabled = _G.CamLockEnabled or false
+-- Guarda os últimos valores aplicados pra reaplicar automaticamente
+-- depois que você morre e renasce (senão volta tudo pro padrão)
+local lastWalkSpeed = nil
+local lastJumpPower = nil
 
--- ==============================================
--- CONFIGURAR BOTÃO ÚNICO COM SWITCH
--- ==============================================
-local function setupMobileUI()
-    local contextFrame = pGui:FindFirstChild("ContextActionGui") and 
-                         pGui.ContextActionGui:FindFirstChild("ContextButtonFrame")
-    
-    if not contextFrame then 
-        warn("ContextButtonFrame não encontrado!")
-        return 
-    end
-    
-    local buttons = contextFrame:GetChildren()
-    table.sort(buttons, function(a, b) return a.Name < b.Name end)
-    
-    -- Guardar referência do botão que vamos usar (o primeiro)
-    local mainButton = buttons[1]
-    if not mainButton then 
-        warn("Botão principal não encontrado!")
-        return 
-    end
-    
-    -- Destruir os outros botões (2 e 3)
-    if buttons[2] then buttons[2]:Destroy() end
-    if buttons[3] then buttons[3]:Destroy() end
-    
-    -- Configurar o botão principal
-    mainButton.Position = UDim2.new(1, -200, 0.5, -100)
-    mainButton.Size = UDim2.new(0, 90, 0, 90)
-    mainButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-    mainButton.TextColor3 = Color3.new(1, 1, 1)
-    mainButton.Font = Enum.Font.GothamBold
-    mainButton.TextSize = 16
-    mainButton.Active = true
-    mainButton.Draggable = true -- Botão também é arrastável
-    
-    -- ==============================================
-    -- INDICADOR DE MODO (L/P) COM TRAVA
-    -- ==============================================
-    local modeIndicator = Instance.new("Frame")
-    modeIndicator.Parent = contextFrame.Parent
-    modeIndicator.Size = UDim2.new(0, 55, 0, 65) -- Um pouco maior para acomodar o cadeado
-    modeIndicator.Position = UDim2.new(1, -220, 0.5, -180)
-    modeIndicator.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-    modeIndicator.BackgroundTransparency = 0.1
-    modeIndicator.Active = true
-    modeIndicator.Draggable = true -- Inicialmente arrastável
-    
-    local indicatorCorner = Instance.new("UICorner")
-    indicatorCorner.Parent = modeIndicator
-    indicatorCorner.CornerRadius = UDim.new(0, 10) -- Levemente arredondado
-    
-    -- Área do texto L/P
-    local textFrame = Instance.new("Frame")
-    textFrame.Parent = modeIndicator
-    textFrame.Size = UDim2.new(1, 0, 0, 35)
-    textFrame.Position = UDim2.new(0, 0, 0, 0)
-    textFrame.BackgroundTransparency = 1
-    
-    local indicatorText = Instance.new("TextLabel")
-    indicatorText.Parent = textFrame
-    indicatorText.Size = UDim2.new(1, 0, 1, 0)
-    indicatorText.BackgroundTransparency = 1
-    indicatorText.Text = currentMode
-    indicatorText.TextColor3 = Color3.fromRGB(0, 255, 255)
-    indicatorText.Font = Enum.Font.GothamBold
-    indicatorText.TextSize = 28
-    indicatorText.TextScaled = true
-    
-    -- Botão de cadeado (travar/destravar)
-    local lockButton = Instance.new("TextButton")
-    lockButton.Parent = modeIndicator
-    lockButton.Size = UDim2.new(0, 30, 0, 30)
-    lockButton.Position = UDim2.new(0.5, -15, 1, -35)
-    lockButton.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-    lockButton.Text = "🔓" -- Destravado inicialmente
-    lockButton.TextColor3 = Color3.new(1, 1, 1)
-    lockButton.Font = Enum.Font.GothamBold
-    lockButton.TextSize = 18
-    lockButton.AutoButtonColor = false
-    
-    local lockCorner = Instance.new("UICorner")
-    lockCorner.Parent = lockButton
-    lockCorner.CornerRadius = UDim.new(1, 0) -- Redondo
-    
-    -- Rótulo do modo
-    local modeLabel = Instance.new("TextLabel")
-    modeLabel.Parent = modeIndicator
-    modeLabel.Size = UDim2.new(1, 0, 0, 20)
-    modeLabel.Position = UDim2.new(0, 0, 1, -20)
-    modeLabel.BackgroundTransparency = 1
-    modeLabel.Text = currentMode == "L" and "CHAR" or "CAM"
-    modeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    modeLabel.Font = Enum.Font.Gotham
-    modeLabel.TextSize = 12
-    
-    -- ==============================================
-    -- FUNÇÕES DE CONTROLE
-    -- ==============================================
-    local function setDraggable(state)
-        isDraggable = state
-        modeIndicator.Draggable = state
-        lockButton.Text = state and "🔓" or "🔒"
-        lockButton.BackgroundColor3 = state and 
-            Color3.fromRGB(60, 60, 70) or Color3.fromRGB(100, 50, 50)
-        
-        -- Feedback visual
-        TweenService:Create(lockButton, TweenInfo.new(0.3), {
-            BackgroundColor3 = state and Color3.fromRGB(60, 60, 70) or Color3.fromRGB(100, 50, 50)
-        }):Play()
-    end
-    
-    local function updateButtonColor()
-        if currentMode == "L" then
-            mainButton.BackgroundColor3 = _G.CharLockEnabled and 
-                Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
-            mainButton.Text = _G.CharLockEnabled and "CHAR ON" or "CHAR OFF"
-            modeLabel.Text = "CHAR"
-        else
-            mainButton.BackgroundColor3 = _G.CamLockEnabled and 
-                Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
-            mainButton.Text = _G.CamLockEnabled and "CAM ON" or "CAM OFF"
-            modeLabel.Text = "CAM"
-        end
-        indicatorText.Text = currentMode
-    end
-    
-    -- ==============================================
-    -- EVENTOS
-    -- ==============================================
-    
-    -- Clique no cadeado (travar/destravar)
-    lockButton.MouseButton1Click:Connect(function()
-        setDraggable(not isDraggable)
-    end)
-    
-    -- Clique no indicador (alternar modo) - só funciona se estiver travado?
-    -- Melhor: sempre funciona, mas se estiver destravado, também arrasta
-    modeIndicator.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch or 
-           input.UserInputType == Enum.UserInputType.MouseButton1 then
-            
-            -- Se não for no cadeado, alterna modo
-            if input.Position then
-                local absPos = modeIndicator.AbsolutePosition
-                local mousePos = Vector2.new(input.Position.X, input.Position.Y)
-                local lockBtnPos = lockButton.AbsolutePosition
-                local lockBtnSize = lockButton.AbsoluteSize
-                
-                -- Verifica se clicou no cadeado
-                local clickedLock = (mousePos.X >= lockBtnPos.X and mousePos.X <= lockBtnPos.X + lockBtnSize.X and
-                                     mousePos.Y >= lockBtnPos.Y and mousePos.Y <= lockBtnPos.Y + lockBtnSize.Y)
-                
-                if not clickedLock then
-                    -- Alternar modo
-                    currentMode = (currentMode == "L") and "P" or "L"
-                    indicatorText.Text = currentMode
-                    updateButtonColor()
-                    
-                    -- Feedback visual
-                    TweenService:Create(modeIndicator, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(80, 80, 100)}):Play()
-                    task.wait(0.1)
-                    TweenService:Create(modeIndicator, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 50)}):Play()
-                end
-            end
-        end
-    end)
-    
-    -- Clique no botão principal
-    mainButton.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch or 
-           input.UserInputType == Enum.UserInputType.MouseButton1 then
-            
-            if currentMode == "L" then
-                _G.CharLockEnabled = not _G.CharLockEnabled
-                if _G.CharacterLock then
-                    _G.CharacterLock(_G.CharLockEnabled)
-                end
-                print("👤 Character Lock:", _G.CharLockEnabled and "ON" or "OFF")
-            else
-                _G.CamLockEnabled = not _G.CamLockEnabled
-                if _G.CameraLock then
-                    _G.CameraLock(_G.CamLockEnabled)
-                end
-                print("📷 Camera Lock:", _G.CamLockEnabled and "ON" or "OFF")
-            end
-            
-            updateButtonColor()
-            
-            -- Feedback visual
-            mainButton.TextSize = 20
-            task.wait(0.1)
-            mainButton.TextSize = 16
-        end
-    end)
-    
-    -- Monitorar mudanças nas variáveis
-    spawn(function()
-        while true do
-            task.wait(0.2)
-            updateButtonColor()
-        end
-    end)
-    
-    -- Atualizar cor inicial
-    updateButtonColor()
-    
-    print("✅ Mobile UI configurada com sucesso!")
-    print("📱 Use o cadeado 🔓/🔒 para travar/arrastar o indicador")
+-- HOLDER (peça invisível no mundo 3D -- o painel "gruda" nela)
+
+local holder = Instance.new("Part")
+holder.Name = "HologramPanel"
+holder.Anchored = true
+holder.CanCollide = false
+holder.CanQuery = false
+holder.Transparency = 1
+holder.Size = Vector3.new(0.2, 0.2, 0.2)
+holder.Parent = workspace
+
+-- CONFIG DE POSIÇÃO (offset maior = fica mais longe do personagem)
+
+local RIGHT_OFFSET = 8.5
+local FORWARD_OFFSET = 1.5
+local HEIGHT_OFFSET = 2.6
+
+-- GUI
+-- BillboardGui precisa ficar no PlayerGui + usar Adornee pra apontar
+-- pra Part 3D -- é a regra oficial da Roblox pra botão/campo de texto
+-- funcionarem dentro de um painel holográfico.
+
+local FULL_SIZE = UDim2.fromOffset(210, 150)
+local MINI_SIZE = UDim2.fromOffset(170, 40)
+
+local ON_COLOR = Color3.fromRGB(0, 150, 90)
+local OFF_COLOR = Color3.fromRGB(45, 50, 75)
+
+local playerGui = player:WaitForChild("PlayerGui")
+
+local gui = Instance.new("BillboardGui")
+gui.Name = "HoloGui"
+gui.Parent = playerGui
+gui.Adornee = holder
+gui.Active = true
+gui.Size = FULL_SIZE
+gui.AlwaysOnTop = true
+gui.MaxDistance = 60
+gui.LightInfluence = 0
+gui.ClipsDescendants = false
+
+local frame = Instance.new("Frame")
+frame.Parent = gui
+frame.Size = UDim2.fromScale(1, 1)
+frame.BackgroundColor3 = Color3.fromRGB(15, 20, 35)
+frame.BackgroundTransparency = 0.15
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 14)
+corner.Parent = frame
+
+local stroke = Instance.new("UIStroke")
+stroke.Parent = frame
+stroke.Color = Color3.fromRGB(0, 170, 255)
+stroke.Thickness = 2
+
+-- ÍCONE (fica visível mesmo minimizado)
+
+local icon = Instance.new("ImageLabel")
+icon.Parent = frame
+icon.BackgroundTransparency = 1
+icon.Size = UDim2.new(0, 26, 0, 26)
+icon.Position = UDim2.new(0, 6, 0, 6)
+icon.Image = "rbxassetid://0" -- troque pelo ID da sua imagem/logo
+
+local iconCorner = Instance.new("UICorner")
+iconCorner.CornerRadius = UDim.new(0, 7)
+iconCorner.Parent = icon
+
+local iconStroke = Instance.new("UIStroke")
+iconStroke.Parent = icon
+iconStroke.Color = Color3.fromRGB(150, 90, 255)
+iconStroke.Thickness = 2
+
+-- TITULO (fica visível mesmo minimizado)
+
+local title = Instance.new("TextLabel")
+title.Parent = frame
+title.BackgroundTransparency = 1
+title.Size = UDim2.new(1, -72, 0, 38)
+title.Position = UDim2.new(0, 38, 0, 0)
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Text = "GHOST 3D MENU"
+title.Font = Enum.Font.GothamBold
+title.TextScaled = true
+title.TextColor3 = Color3.new(1, 1, 1)
+
+-- LINHA (some quando minimizado)
+
+local line = Instance.new("Frame")
+line.Parent = frame
+line.Position = UDim2.new(0.1, 0, 0, 36)
+line.Size = UDim2.new(0.8, 0, 0, 2)
+line.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+line.BorderSizePixel = 0
+
+-- CONTEÚDO (some quando minimizado) -- usa UIListLayout pra empilhar
+-- os controles automaticamente, sem calcular posição de cada um na mão
+
+local content = Instance.new("ScrollingFrame")
+content.Parent = frame
+content.BackgroundTransparency = 1
+content.BorderSizePixel = 0
+content.Position = UDim2.new(0, 0, 0, 44)
+content.Size = UDim2.new(1, 0, 1, -48)
+content.ScrollBarThickness = 4
+content.ScrollBarImageColor3 = Color3.fromRGB(0, 170, 255)
+content.ScrollingDirection = Enum.ScrollingDirection.Y
+-- Efeito elástico ao arrastar, tipo puxar uma página pra baixo no celular
+content.ElasticBehavior = Enum.ElasticBehavior.WhenScrollable
+-- Calcula sozinho até onde dá pra rolar, baseado na altura real do
+-- conteúdo (WalkSpeed, JumpPower, Noclip, Infinite Jump, ESP, status)
+content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+content.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+local listLayout = Instance.new("UIListLayout")
+listLayout.Parent = content
+listLayout.FillDirection = Enum.FillDirection.Vertical
+listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout.Padding = UDim.new(0, 4)
+
+local listPadding = Instance.new("UIPadding")
+listPadding.Parent = content
+listPadding.PaddingTop = UDim.new(0, 4)
+listPadding.PaddingBottom = UDim.new(0, 6)
+
+-- Função auxiliar: cria um TextBox padrão (campo numérico)
+
+local function makeTextBox(order, placeholder)
+	local box = Instance.new("TextBox")
+	box.LayoutOrder = order
+	box.Parent = content
+	box.Size = UDim2.new(0.92, 0, 0, 26)
+	box.PlaceholderText = placeholder
+	box.Text = ""
+	box.Font = Enum.Font.Gotham
+	box.TextScaled = true
+	box.ClearTextOnFocus = false
+	box.BackgroundColor3 = Color3.fromRGB(235, 235, 245)
+	box.TextColor3 = Color3.fromRGB(30, 30, 40)
+
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, 7)
+	c.Parent = box
+
+	local p = Instance.new("UIPadding")
+	p.PaddingLeft = UDim.new(0, 8)
+	p.PaddingRight = UDim.new(0, 8)
+	p.Parent = box
+
+	return box
 end
 
--- ==============================================
--- CONFIGURAR PARA MOBILE
--- ==============================================
-if UserInputService.TouchEnabled then
-    task.wait(2)
-    setupMobileUI()
-else
-    -- MODO PC (teclas)
-    UserInputService.InputBegan:Connect(function(input, gpe)
-        if gpe then return end
-        
-        if input.KeyCode == Enum.KeyCode.P then
-            _G.CamLockEnabled = not _G.CamLockEnabled
-            if _G.CameraLock then
-                _G.CameraLock(_G.CamLockEnabled)
-            end
-            print("📷 Camera Lock:", _G.CamLockEnabled and "ON" or "OFF")
-            
-        elseif input.KeyCode == Enum.KeyCode.L then
-            _G.CharLockEnabled = not _G.CharLockEnabled
-            if _G.CharacterLock then
-                _G.CharacterLock(_G.CharLockEnabled)
-            end
-            print("👤 Character Lock:", _G.CharLockEnabled and "ON" or "OFF")
-        end
-    end)
-    
-    print("💻 PC Mode: Pressione P (Camera) ou L (Character)")
+-- Função auxiliar: cria um TextButton padrão (botão de ação/toggle)
+
+local function makeButton(order, text, color)
+	local btn = Instance.new("TextButton")
+	btn.LayoutOrder = order
+	btn.Parent = content
+	btn.Size = UDim2.new(0.92, 0, 0, 26)
+	btn.Text = text
+	btn.Font = Enum.Font.GothamBold
+	btn.TextScaled = true
+	btn.BackgroundColor3 = color
+	btn.TextColor3 = Color3.new(1, 1, 1)
+	btn.AutoButtonColor = true
+
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, 7)
+	c.Parent = btn
+
+	return btn
 end
 
--- Recriar UI ao renascer
-if UserInputService.TouchEnabled then
-    player.CharacterAdded:Connect(function()
-        task.wait(3)
-        setupMobileUI()
-    end)
+-- WALKSPEED
+
+local speedBox = makeTextBox(1, "WalkSpeed (padrão 16)")
+local activateBtn = makeButton(2, "Ativar Speed", OFF_COLOR)
+
+-- JUMPPOWER
+
+local jumpBox = makeTextBox(3, "JumpPower (padrão 50)")
+local jumpBtn = makeButton(4, "Ativar Jump", OFF_COLOR)
+
+-- NOCLIP / INFINITE JUMP / ESP (toggles)
+
+local noclipBtn = makeButton(5, "Noclip: OFF", OFF_COLOR)
+local infJumpBtn = makeButton(6, "Infinite Jump: OFF", OFF_COLOR)
+local espBtn = makeButton(7, "ESP: OFF", OFF_COLOR)
+
+-- STATUS
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.LayoutOrder = 8
+statusLabel.Parent = content
+statusLabel.BackgroundTransparency = 1
+statusLabel.Size = UDim2.new(0.92, 0, 0, 16)
+statusLabel.Text = ""
+statusLabel.Font = Enum.Font.Gotham
+statusLabel.TextScaled = true
+statusLabel.TextColor3 = Color3.fromRGB(0, 220, 130)
+
+-- TOGGLE / MINIMIZAR (fica sempre visível)
+
+local toggle = Instance.new("TextButton")
+toggle.Parent = frame
+toggle.AnchorPoint = Vector2.new(1, 0)
+toggle.Size = UDim2.new(0, 24, 0, 24)
+toggle.Position = UDim2.new(1, -6, 0, 6)
+toggle.Text = "-"
+toggle.Font = Enum.Font.GothamBold
+toggle.TextScaled = true
+toggle.BackgroundColor3 = Color3.fromRGB(120, 30, 30)
+toggle.TextColor3 = Color3.new(1, 1, 1)
+toggle.AutoButtonColor = true
+toggle.ZIndex = 5
+
+local toggleCorner = Instance.new("UICorner")
+toggleCorner.CornerRadius = UDim.new(0, 7)
+toggleCorner.Parent = toggle
+
+local opened = true
+
+local function setOpened(state)
+	opened = state
+
+	if opened then
+		toggle.Text = "-"
+		line.Visible = true
+		content.Visible = true
+
+		TweenService:Create(
+			gui,
+			TweenInfo.new(0.18, Enum.EasingStyle.Quad),
+			{Size = FULL_SIZE}
+		):Play()
+	else
+		toggle.Text = "+"
+
+		TweenService:Create(
+			gui,
+			TweenInfo.new(0.18, Enum.EasingStyle.Quad),
+			{Size = MINI_SIZE}
+		):Play()
+
+		task.delay(0.18, function()
+			if not opened then
+				line.Visible = false
+				content.Visible = false
+			end
+		end)
+	end
 end
+
+toggle.Activated:Connect(function()
+	setOpened(not opened)
+end)
+
+-- FEEDBACK VISUAL
+
+local function showStatus(text)
+	statusLabel.Text = text
+	task.delay(2, function()
+		if statusLabel and statusLabel.Text == text then
+			statusLabel.Text = ""
+		end
+	end)
+end
+
+-- WALKSPEED
+
+local function activateSpeed()
+	local value = tonumber(speedBox.Text) or 16
+	value = math.clamp(value, 1, 500)
+	lastWalkSpeed = value
+
+	if humanoid then
+		humanoid.WalkSpeed = value
+	end
+
+	showStatus("Speed ativado: " .. tostring(value))
+end
+
+activateBtn.Activated:Connect(activateSpeed)
+speedBox.FocusLost:Connect(function(enterPressed)
+	if enterPressed then activateSpeed() end
+end)
+
+-- JUMPPOWER
+
+local function activateJumpPower()
+	local value = tonumber(jumpBox.Text) or 50
+	value = math.clamp(value, 1, 500)
+	lastJumpPower = value
+
+	if humanoid then
+		humanoid.UseJumpPower = true
+		humanoid.JumpPower = value
+	end
+
+	showStatus("JumpPower ativado: " .. tostring(value))
+end
+
+jumpBtn.Activated:Connect(activateJumpPower)
+jumpBox.FocusLost:Connect(function(enterPressed)
+	if enterPressed then activateJumpPower() end
+end)
+
+-- NOCLIP
+
+local noclipEnabled = false
+local noclipConn = nil
+
+local function setNoclip(state)
+	noclipEnabled = state
+	noclipBtn.Text = noclipEnabled and "Noclip: ON" or "Noclip: OFF"
+	noclipBtn.BackgroundColor3 = noclipEnabled and ON_COLOR or OFF_COLOR
+
+	if noclipEnabled then
+		noclipConn = RunService.Stepped:Connect(function()
+			if character then
+				for _, part in ipairs(character:GetDescendants()) do
+					if part:IsA("BasePart") then
+						part.CanCollide = false
+					end
+				end
+			end
+		end)
+	else
+		if noclipConn then
+			noclipConn:Disconnect()
+			noclipConn = nil
+		end
+		if character then
+			for _, part in ipairs(character:GetDescendants()) do
+				if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+					part.CanCollide = true
+				end
+			end
+		end
+	end
+
+	showStatus("Noclip: " .. (noclipEnabled and "ativado" or "desativado"))
+end
+
+noclipBtn.Activated:Connect(function()
+	setNoclip(not noclipEnabled)
+end)
+
+-- INFINITE JUMP
+
+local infiniteJumpEnabled = false
+
+local function setInfiniteJump(state)
+	infiniteJumpEnabled = state
+	infJumpBtn.Text = infiniteJumpEnabled and "Infinite Jump: ON" or "Infinite Jump: OFF"
+	infJumpBtn.BackgroundColor3 = infiniteJumpEnabled and ON_COLOR or OFF_COLOR
+	showStatus("Infinite Jump: " .. (infiniteJumpEnabled and "ativado" or "desativado"))
+end
+
+infJumpBtn.Activated:Connect(function()
+	setInfiniteJump(not infiniteJumpEnabled)
+end)
+
+UserInputService.JumpRequest:Connect(function()
+	if infiniteJumpEnabled and humanoid then
+		humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+	end
+end)
+
+-- ESP (contorno nos outros jogadores, visível através de parede)
+
+local ESP_COLOR = Color3.fromRGB(255, 60, 60)
+local espEnabled = false
+local espHighlights = {}
+
+local function addESP(plr)
+	if plr == player then return end
+	local char = plr.Character
+	if not char then return end
+
+	local existing = char:FindFirstChild("GhostESP")
+	if existing then existing:Destroy() end
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "GhostESP"
+	highlight.FillColor = ESP_COLOR
+	highlight.OutlineColor = Color3.new(1, 1, 1)
+	highlight.FillTransparency = 0.5
+	highlight.OutlineTransparency = 0
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Enabled = espEnabled
+	highlight.Parent = char
+
+	espHighlights[plr] = highlight
+end
+
+local function removeESP(plr)
+	local h = espHighlights[plr]
+	if h then
+		h:Destroy()
+		espHighlights[plr] = nil
+	end
+end
+
+local function setESP(state)
+	espEnabled = state
+	espBtn.Text = espEnabled and "ESP: ON" or "ESP: OFF"
+	espBtn.BackgroundColor3 = espEnabled and ON_COLOR or OFF_COLOR
+
+	for _, h in pairs(espHighlights) do
+		h.Enabled = espEnabled
+	end
+
+	showStatus("ESP: " .. (espEnabled and "ativado" or "desativado"))
+end
+
+espBtn.Activated:Connect(function()
+	setESP(not espEnabled)
+end)
+
+for _, plr in ipairs(Players:GetPlayers()) do
+	addESP(plr)
+	plr.CharacterAdded:Connect(function()
+		task.wait(0.2)
+		addESP(plr)
+	end)
+end
+
+Players.PlayerAdded:Connect(function(plr)
+	addESP(plr)
+	plr.CharacterAdded:Connect(function()
+		task.wait(0.2)
+		addESP(plr)
+	end)
+end)
+
+Players.PlayerRemoving:Connect(removeESP)
+
+-- LOOP PRINCIPAL
+-- Em vez de depender de CharacterAdded/Died (que podem falhar por causa
+-- de ordem de eventos), checamos TODO FRAME se o personagem atual ainda
+-- é válido. Se for um personagem novo (respawn), gruda direto nele sem
+-- "voar" pela tela. Isso corrige o painel sumir/travar após morrer.
+
+RunService.RenderStepped:Connect(function()
+
+	local char = player.Character
+	local liveRoot = char and char:FindFirstChild("HumanoidRootPart")
+	local liveHumanoid = char and char:FindFirstChild("Humanoid")
+
+	if not (liveRoot and liveHumanoid and liveHumanoid.Health > 0) then
+		gui.Enabled = false
+		return
+	end
+
+	gui.Enabled = true
+
+	if root ~= liveRoot then
+		-- Personagem novo detectado (primeiro spawn ou respawn)
+		character = char
+		root = liveRoot
+		humanoid = liveHumanoid
+
+		local snapPos =
+			root.Position +
+			root.CFrame.RightVector * RIGHT_OFFSET +
+			Vector3.new(0, HEIGHT_OFFSET, 0)
+
+		currentPos = snapPos
+		holder.Position = snapPos
+
+		-- Reaplica os últimos valores configurados
+		if lastWalkSpeed then
+			humanoid.WalkSpeed = lastWalkSpeed
+		end
+		if lastJumpPower then
+			humanoid.UseJumpPower = true
+			humanoid.JumpPower = lastJumpPower
+		end
+	end
+
+	local t = tick()
+
+	local offset =
+		root.CFrame.LookVector * FORWARD_OFFSET +
+		root.CFrame.RightVector * RIGHT_OFFSET +
+		Vector3.new(0, HEIGHT_OFFSET + math.sin(t * 2) * 0.08, 0)
+
+	local targetPos = root.Position + offset
+
+	currentPos = currentPos:Lerp(targetPos, 0.1)
+	holder.Position = currentPos
+
+	stroke.Transparency =
+		0.45 + math.abs(math.sin(t * 2)) * 0.2
+
+end)
