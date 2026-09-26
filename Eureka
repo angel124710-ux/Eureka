@@ -208,17 +208,18 @@ local jumpBtn = makeButton(4, "Ativar Jump", OFF_COLOR)
 local flyBtn = makeButton(5, "Fly: OFF", OFF_COLOR)
 local upBtn = makeButton(6, "▲ Segurar p/ Subir", OFF_COLOR)
 local downBtn = makeButton(7, "▼ Segurar p/ Descer", OFF_COLOR)
+local boostBtn = makeButton(8, "⚡ Segurar p/ Boost", OFF_COLOR)
 
 -- NOCLIP / INFINITE JUMP / ESP (toggles)
 
-local noclipBtn = makeButton(8, "Noclip: OFF", OFF_COLOR)
-local infJumpBtn = makeButton(9, "Infinite Jump: OFF", OFF_COLOR)
-local espBtn = makeButton(10, "ESP: OFF", OFF_COLOR)
+local noclipBtn = makeButton(9, "Noclip: OFF", OFF_COLOR)
+local infJumpBtn = makeButton(10, "Infinite Jump: OFF", OFF_COLOR)
+local espBtn = makeButton(11, "ESP: OFF", OFF_COLOR)
 
 -- STATUS
 
 local statusLabel = Instance.new("TextLabel")
-statusLabel.LayoutOrder = 11
+statusLabel.LayoutOrder = 12
 statusLabel.Parent = content
 statusLabel.BackgroundTransparency = 1
 statusLabel.Size = UDim2.new(0.92, 0, 0, 16)
@@ -283,6 +284,76 @@ toggle.Activated:Connect(function()
 	setOpened(not opened)
 end)
 
+-- HUD 2D DO FLY -- aparece só enquanto voando, no canto superior
+-- direito, pra não precisar abrir o menu 3D toda hora só pra desligar
+-- o voo ou dar boost (igual o vídeo de referência)
+
+local flyHud = Instance.new("ScreenGui")
+flyHud.Name = "GhostFlyHUD"
+flyHud.ResetOnSpawn = false
+flyHud.Enabled = false
+flyHud.DisplayOrder = 60
+flyHud.Parent = playerGui
+
+local hudFrame = Instance.new("Frame")
+hudFrame.Parent = flyHud
+hudFrame.AnchorPoint = Vector2.new(1, 0)
+hudFrame.Position = UDim2.new(1, -12, 0, 12)
+hudFrame.Size = UDim2.new(0, 180, 0, 36)
+hudFrame.BackgroundColor3 = Color3.fromRGB(15, 20, 35)
+hudFrame.BackgroundTransparency = 0.1
+
+local hudCorner = Instance.new("UICorner")
+hudCorner.CornerRadius = UDim.new(0, 10)
+hudCorner.Parent = hudFrame
+
+local hudStroke = Instance.new("UIStroke")
+hudStroke.Parent = hudFrame
+hudStroke.Color = Color3.fromRGB(0, 170, 255)
+hudStroke.Thickness = 2
+
+local hudLayout = Instance.new("UIListLayout")
+hudLayout.Parent = hudFrame
+hudLayout.FillDirection = Enum.FillDirection.Horizontal
+hudLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+hudLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+hudLayout.Padding = UDim.new(0, 4)
+
+local hudPadding = Instance.new("UIPadding")
+hudPadding.Parent = hudFrame
+hudPadding.PaddingLeft = UDim.new(0, 5)
+hudPadding.PaddingRight = UDim.new(0, 5)
+
+local hudFlyBtn = Instance.new("TextButton")
+hudFlyBtn.Parent = hudFrame
+hudFlyBtn.LayoutOrder = 1
+hudFlyBtn.Size = UDim2.new(0.5, -4, 1, -8)
+hudFlyBtn.Text = "UNFLY"
+hudFlyBtn.Font = Enum.Font.GothamBold
+hudFlyBtn.TextScaled = true
+hudFlyBtn.BackgroundColor3 = Color3.fromRGB(150, 30, 90)
+hudFlyBtn.TextColor3 = Color3.new(1, 1, 1)
+hudFlyBtn.AutoButtonColor = true
+
+local hudFlyCorner = Instance.new("UICorner")
+hudFlyCorner.CornerRadius = UDim.new(0, 7)
+hudFlyCorner.Parent = hudFlyBtn
+
+local hudBoostBtn = Instance.new("TextButton")
+hudBoostBtn.Parent = hudFrame
+hudBoostBtn.LayoutOrder = 2
+hudBoostBtn.Size = UDim2.new(0.5, -4, 1, -8)
+hudBoostBtn.Text = "BOOST"
+hudBoostBtn.Font = Enum.Font.GothamBold
+hudBoostBtn.TextScaled = true
+hudBoostBtn.BackgroundColor3 = Color3.fromRGB(60, 40, 110)
+hudBoostBtn.TextColor3 = Color3.new(1, 1, 1)
+hudBoostBtn.AutoButtonColor = true
+
+local hudBoostCorner = Instance.new("UICorner")
+hudBoostCorner.CornerRadius = UDim.new(0, 7)
+hudBoostCorner.Parent = hudBoostBtn
+
 -- FEEDBACK VISUAL
 
 local function showStatus(text)
@@ -335,23 +406,59 @@ end)
 
 -- FLY
 
-local FLY_SPEED = 50
-local flying = false
-local flyVelocity = nil
-local flyGyro = nil
-local verticalDir = 0 -- -1 descendo, 0 parado, 1 subindo
+local BASE_FLY_SPEED = 50
+local BOOST_MULTIPLIER = 2.2
+local HOVER_AMPLITUDE = 0.6 -- hover mínimo, em studs de oscilação
+local MAX_BANK = math.rad(25) -- inclinação lateral (roll) ao fazer strafe
+local MAX_DIVE_PITCH = math.rad(35) -- mergulho extra do corpo no boost
+local ARM_FORWARD_ANGLE = math.rad(-100) -- braços "pendurados" -> "pra frente"
+-- ^ Essas duas últimas linhas mexem na POSE (braços/corpo). Não tenho
+-- como abrir o Studio e ver o resultado ao vivo, então se o ângulo ou
+-- o sentido saírem errados no seu avatar, ajuste os graus aqui.
 
--- Cria/destroi o BodyVelocity (posição) + BodyGyro (rotação) que
--- sustentam o personagem no ar, sempre baseado no "root" atual
--- (funciona de novo após respawn)
+local flying = false
+local boosting = false
+local flyVelocity = nil
+local verticalDir = 0 -- -1 descendo, 0 parado, 1 subindo
+local poseBlend = 0 -- 0 = pose normal, 1 = pose deitada (suaviza a troca)
+
+-- Ombros, pra fazer a pose de braços pra frente -- funciona tanto em
+-- avatar R15 quanto R6, procurando o Motor6D certo em cada um
+local leftShoulder, rightShoulder = nil, nil
+local defaultLeftC0, defaultRightC0 = nil, nil
+
+local function findShoulders(char, hum)
+	if not char or not hum then
+		return nil, nil
+	end
+
+	if hum.RigType == Enum.HumanoidRigType.R15 then
+		local upperTorso = char:FindFirstChild("UpperTorso")
+		if upperTorso then
+			return upperTorso:FindFirstChild("LeftShoulder"),
+				upperTorso:FindFirstChild("RightShoulder")
+		end
+	else
+		local torso = char:FindFirstChild("Torso")
+		if torso then
+			return torso:FindFirstChild("Left Shoulder"),
+				torso:FindFirstChild("Right Shoulder")
+		end
+	end
+
+	return nil, nil
+end
+
+-- Cria/destroi o BodyVelocity que sustenta o personagem no ar, sempre
+-- baseado no "root" atual (funciona de novo após respawn). A rotação
+-- NÃO usa mais BodyGyro (era baseado em física/mola, podia "atrasar"
+-- ou não girar rápido o suficiente) -- agora é escrita direto no
+-- CFrame todo frame, o que também garante 100% de estabilidade contra
+-- colisão, já que nada de físico pode empurrar a rotação sem querer.
 local function applyFlyToCharacter()
 	if flyVelocity then
 		flyVelocity:Destroy()
 		flyVelocity = nil
-	end
-	if flyGyro then
-		flyGyro:Destroy()
-		flyGyro = nil
 	end
 
 	if flying and root and humanoid then
@@ -362,16 +469,26 @@ local function applyFlyToCharacter()
 		flyVelocity.Velocity = Vector3.new(0, 0, 0)
 		flyVelocity.Parent = root
 
-		-- MaxTorque alto = resiste com força a qualquer giro que uma
-		-- colisão tente causar, evitando o "flingado" ao bater em algo
-		flyGyro = Instance.new("BodyGyro")
-		flyGyro.MaxTorque = Vector3.new(1, 1, 1) * 1e9
-		flyGyro.P = 3000
-		flyGyro.D = 200
-		flyGyro.CFrame = root.CFrame
-		flyGyro.Parent = root
+		leftShoulder, rightShoulder = findShoulders(character, humanoid)
+		defaultLeftC0 = leftShoulder and leftShoulder.C0 or nil
+		defaultRightC0 = rightShoulder and rightShoulder.C0 or nil
 	elseif humanoid then
 		humanoid.PlatformStand = false
+
+		if root then
+			root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+		end
+
+		-- Devolve os braços pra pose normal
+		if leftShoulder and defaultLeftC0 then
+			leftShoulder.C0 = defaultLeftC0
+		end
+		if rightShoulder and defaultRightC0 then
+			rightShoulder.C0 = defaultRightC0
+		end
+
+		leftShoulder, rightShoulder = nil, nil
+		poseBlend = 0
 	end
 end
 
@@ -379,36 +496,58 @@ local function setFlying(state)
 	flying = state
 	flyBtn.Text = flying and "Fly: ON" or "Fly: OFF"
 	flyBtn.BackgroundColor3 = flying and ON_COLOR or OFF_COLOR
+	flyHud.Enabled = flying -- mostra/esconde o HUD 2D junto com o voo
+
+	if not flying then
+		boosting = false -- não deixa o boost "preso" ligado
+	end
+
 	applyFlyToCharacter()
-	showStatus("Fly: " .. (flying and "ativado (ande normal p/ mover)" or "desativado"))
+	showStatus("Fly: " .. (flying and "ativado (olhe p/ onde quer ir)" or "desativado"))
 end
 
 flyBtn.Activated:Connect(function()
 	setFlying(not flying)
 end)
 
--- Segurar os botões de subir/descer -- funciona com clique (PC) e
--- toque (celular), igual o resto do painel
-local function bindHold(btn, dir)
+hudFlyBtn.Activated:Connect(function()
+	setFlying(false)
+end)
+
+-- Segurar um botão -- funciona com clique (PC) e toque (celular).
+-- onDown/onUp deixam essa função reutilizável pra subir/descer/boost
+local function bindHold(btn, onDown, onUp)
 	btn.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1
 			or input.UserInputType == Enum.UserInputType.Touch then
-			verticalDir = dir
+			onDown()
 		end
 	end)
 
 	btn.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1
 			or input.UserInputType == Enum.UserInputType.Touch then
-			if verticalDir == dir then
-				verticalDir = 0
-			end
+			onUp()
 		end
 	end)
 end
 
-bindHold(upBtn, 1)
-bindHold(downBtn, -1)
+bindHold(upBtn,
+	function() verticalDir = 1 end,
+	function() if verticalDir == 1 then verticalDir = 0 end end)
+
+bindHold(downBtn,
+	function() verticalDir = -1 end,
+	function() if verticalDir == -1 then verticalDir = 0 end end)
+
+-- Boost: funciona tanto pelo botão dentro do menu quanto pelo HUD 2D
+bindHold(boostBtn,
+	function() boosting = true end,
+	function() boosting = false end)
+
+bindHold(hudBoostBtn,
+	function() boosting = true end,
+	function() boosting = false end)
 
 -- NOCLIP
 
@@ -571,70 +710,4 @@ RunService.RenderStepped:Connect(function()
 			root.CFrame.RightVector * RIGHT_OFFSET +
 			Vector3.new(0, HEIGHT_OFFSET, 0)
 
-		currentPos = snapPos
-		holder.Position = snapPos
-
-		-- Reaplica os últimos valores configurados
-		if lastWalkSpeed then
-			humanoid.WalkSpeed = lastWalkSpeed
-		end
-		if lastJumpPower then
-			humanoid.UseJumpPower = true
-			humanoid.JumpPower = lastJumpPower
-		end
-		if flying then
-			applyFlyToCharacter() -- recria o BodyVelocity no personagem novo
-		end
-	end
-
-	local t = tick()
-
-	local offset =
-		root.CFrame.LookVector * FORWARD_OFFSET +
-		root.CFrame.RightVector * RIGHT_OFFSET +
-		Vector3.new(0, HEIGHT_OFFSET + math.sin(t * 2) * 0.08, 0)
-
-	local targetPos = root.Position + offset
-
-	currentPos = currentPos:Lerp(targetPos, 0.1)
-	holder.Position = currentPos
-
-	-- Atualiza o movimento do voo: horizontal usa o mesmo controle
-	-- de andar do jogo (WASD no PC, joystick no celular), vertical
-	-- usa os botões de segurar
-	if flying and flyVelocity and humanoid then
-		local horizontal = humanoid.MoveDirection * FLY_SPEED
-		local vertical = Vector3.new(0, verticalDir * FLY_SPEED, 0)
-		flyVelocity.Velocity = horizontal + vertical
-	end
-
-	-- Vira o personagem em TODAS as rotações: pitch (sobe/desce o nariz
-	-- olhando pra cima/baixo), yaw (vira os lados) e roll (inclina tipo
-	-- avião conforme anda de lado). Usamos a base da própria câmera
-	-- (look/up) pra montar a orientação -- isso evita o problema de
-	-- "gimbal" que dá erro quando se olha quase reto pra cima ou baixo.
-	if flying and flyGyro and root then
-		local camera = workspace.CurrentCamera
-		if camera then
-			local camCF = camera.CFrame
-			local look = camCF.LookVector
-			local up = camCF.UpVector
-
-			-- Roll: inclina pro lado proporcional a quanto você anda de
-			-- lado (strafe) em relação pra onde tá olhando
-			local sideways = humanoid.MoveDirection:Dot(camCF.RightVector)
-			local MAX_BANK = math.rad(25)
-			local bankAngle = MAX_BANK * sideways
-
-			local baseCF = CFrame.new(root.Position, root.Position + look, up)
-
-			-- Se o banco parecer invertido no seu jogo, troca o sinal
-			-- aqui (bankAngle -> -bankAngle)
-			flyGyro.CFrame = baseCF * CFrame.Angles(0, 0, bankAngle)
-		end
-	end
-
-	stroke.Transparency =
-		0.45 + math.abs(math.sin(t * 2)) * 0.2
-
-end)
+		currentP
