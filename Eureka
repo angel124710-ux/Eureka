@@ -338,14 +338,20 @@ end)
 local FLY_SPEED = 50
 local flying = false
 local flyVelocity = nil
+local flyGyro = nil
 local verticalDir = 0 -- -1 descendo, 0 parado, 1 subindo
 
--- Cria/destroi o BodyVelocity que sustenta o personagem no ar,
--- sempre baseado no "root" atual (funciona de novo após respawn)
+-- Cria/destroi o BodyVelocity (posição) + BodyGyro (rotação) que
+-- sustentam o personagem no ar, sempre baseado no "root" atual
+-- (funciona de novo após respawn)
 local function applyFlyToCharacter()
 	if flyVelocity then
 		flyVelocity:Destroy()
 		flyVelocity = nil
+	end
+	if flyGyro then
+		flyGyro:Destroy()
+		flyGyro = nil
 	end
 
 	if flying and root and humanoid then
@@ -355,6 +361,15 @@ local function applyFlyToCharacter()
 		flyVelocity.MaxForce = Vector3.new(1, 1, 1) * 1e9
 		flyVelocity.Velocity = Vector3.new(0, 0, 0)
 		flyVelocity.Parent = root
+
+		-- MaxTorque alto = resiste com força a qualquer giro que uma
+		-- colisão tente causar, evitando o "flingado" ao bater em algo
+		flyGyro = Instance.new("BodyGyro")
+		flyGyro.MaxTorque = Vector3.new(1, 1, 1) * 1e9
+		flyGyro.P = 3000
+		flyGyro.D = 200
+		flyGyro.CFrame = root.CFrame
+		flyGyro.Parent = root
 	elseif humanoid then
 		humanoid.PlatformStand = false
 	end
@@ -591,6 +606,32 @@ RunService.RenderStepped:Connect(function()
 		local horizontal = humanoid.MoveDirection * FLY_SPEED
 		local vertical = Vector3.new(0, verticalDir * FLY_SPEED, 0)
 		flyVelocity.Velocity = horizontal + vertical
+	end
+
+	-- Vira o personagem em TODAS as rotações: pitch (sobe/desce o nariz
+	-- olhando pra cima/baixo), yaw (vira os lados) e roll (inclina tipo
+	-- avião conforme anda de lado). Usamos a base da própria câmera
+	-- (look/up) pra montar a orientação -- isso evita o problema de
+	-- "gimbal" que dá erro quando se olha quase reto pra cima ou baixo.
+	if flying and flyGyro and root then
+		local camera = workspace.CurrentCamera
+		if camera then
+			local camCF = camera.CFrame
+			local look = camCF.LookVector
+			local up = camCF.UpVector
+
+			-- Roll: inclina pro lado proporcional a quanto você anda de
+			-- lado (strafe) em relação pra onde tá olhando
+			local sideways = humanoid.MoveDirection:Dot(camCF.RightVector)
+			local MAX_BANK = math.rad(25)
+			local bankAngle = MAX_BANK * sideways
+
+			local baseCF = CFrame.new(root.Position, root.Position + look, up)
+
+			-- Se o banco parecer invertido no seu jogo, troca o sinal
+			-- aqui (bankAngle -> -bankAngle)
+			flyGyro.CFrame = baseCF * CFrame.Angles(0, 0, bankAngle)
+		end
 	end
 
 	stroke.Transparency =
