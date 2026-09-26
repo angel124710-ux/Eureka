@@ -1,5 +1,5 @@
 -- GHOST 3D MENU - LocalScript para uso no seu próprio jogo
--- Painel holográfico 3D: WalkSpeed, JumpPower, Noclip, Infinite Jump, ESP
+-- Painel holográfico 3D: WalkSpeed, JumpPower, Fly, Noclip, Infinite Jump, ESP
 -- Funciona em PC e celular
 
 local Players = game:GetService("Players")
@@ -203,16 +203,22 @@ local activateBtn = makeButton(2, "Ativar Speed", OFF_COLOR)
 local jumpBox = makeTextBox(3, "JumpPower (padrão 50)")
 local jumpBtn = makeButton(4, "Ativar Jump", OFF_COLOR)
 
+-- FLY
+
+local flyBtn = makeButton(5, "Fly: OFF", OFF_COLOR)
+local upBtn = makeButton(6, "▲ Segurar p/ Subir", OFF_COLOR)
+local downBtn = makeButton(7, "▼ Segurar p/ Descer", OFF_COLOR)
+
 -- NOCLIP / INFINITE JUMP / ESP (toggles)
 
-local noclipBtn = makeButton(5, "Noclip: OFF", OFF_COLOR)
-local infJumpBtn = makeButton(6, "Infinite Jump: OFF", OFF_COLOR)
-local espBtn = makeButton(7, "ESP: OFF", OFF_COLOR)
+local noclipBtn = makeButton(8, "Noclip: OFF", OFF_COLOR)
+local infJumpBtn = makeButton(9, "Infinite Jump: OFF", OFF_COLOR)
+local espBtn = makeButton(10, "ESP: OFF", OFF_COLOR)
 
 -- STATUS
 
 local statusLabel = Instance.new("TextLabel")
-statusLabel.LayoutOrder = 8
+statusLabel.LayoutOrder = 11
 statusLabel.Parent = content
 statusLabel.BackgroundTransparency = 1
 statusLabel.Size = UDim2.new(0.92, 0, 0, 16)
@@ -326,6 +332,68 @@ jumpBtn.Activated:Connect(activateJumpPower)
 jumpBox.FocusLost:Connect(function(enterPressed)
 	if enterPressed then activateJumpPower() end
 end)
+
+-- FLY
+
+local FLY_SPEED = 50
+local flying = false
+local flyVelocity = nil
+local verticalDir = 0 -- -1 descendo, 0 parado, 1 subindo
+
+-- Cria/destroi o BodyVelocity que sustenta o personagem no ar,
+-- sempre baseado no "root" atual (funciona de novo após respawn)
+local function applyFlyToCharacter()
+	if flyVelocity then
+		flyVelocity:Destroy()
+		flyVelocity = nil
+	end
+
+	if flying and root and humanoid then
+		humanoid.PlatformStand = true
+
+		flyVelocity = Instance.new("BodyVelocity")
+		flyVelocity.MaxForce = Vector3.new(1, 1, 1) * 1e9
+		flyVelocity.Velocity = Vector3.new(0, 0, 0)
+		flyVelocity.Parent = root
+	elseif humanoid then
+		humanoid.PlatformStand = false
+	end
+end
+
+local function setFlying(state)
+	flying = state
+	flyBtn.Text = flying and "Fly: ON" or "Fly: OFF"
+	flyBtn.BackgroundColor3 = flying and ON_COLOR or OFF_COLOR
+	applyFlyToCharacter()
+	showStatus("Fly: " .. (flying and "ativado (ande normal p/ mover)" or "desativado"))
+end
+
+flyBtn.Activated:Connect(function()
+	setFlying(not flying)
+end)
+
+-- Segurar os botões de subir/descer -- funciona com clique (PC) e
+-- toque (celular), igual o resto do painel
+local function bindHold(btn, dir)
+	btn.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			verticalDir = dir
+		end
+	end)
+
+	btn.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			if verticalDir == dir then
+				verticalDir = 0
+			end
+		end
+	end)
+end
+
+bindHold(upBtn, 1)
+bindHold(downBtn, -1)
 
 -- NOCLIP
 
@@ -499,6 +567,9 @@ RunService.RenderStepped:Connect(function()
 			humanoid.UseJumpPower = true
 			humanoid.JumpPower = lastJumpPower
 		end
+		if flying then
+			applyFlyToCharacter() -- recria o BodyVelocity no personagem novo
+		end
 	end
 
 	local t = tick()
@@ -512,6 +583,15 @@ RunService.RenderStepped:Connect(function()
 
 	currentPos = currentPos:Lerp(targetPos, 0.1)
 	holder.Position = currentPos
+
+	-- Atualiza o movimento do voo: horizontal usa o mesmo controle
+	-- de andar do jogo (WASD no PC, joystick no celular), vertical
+	-- usa os botões de segurar
+	if flying and flyVelocity and humanoid then
+		local horizontal = humanoid.MoveDirection * FLY_SPEED
+		local vertical = Vector3.new(0, verticalDir * FLY_SPEED, 0)
+		flyVelocity.Velocity = horizontal + vertical
+	end
 
 	stroke.Transparency =
 		0.45 + math.abs(math.sin(t * 2)) * 0.2
